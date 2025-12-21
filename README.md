@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.33%2B-ff4b4b?logo=streamlit)](https://streamlit.io/)
 [![LangChain](https://img.shields.io/badge/LangChain-0.2-orange?logo=chainlink)](https://www.langchain.com/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-gpt-4o-black?logo=openai)](https://platform.openai.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-gpt_4o-black?logo=openai)](https://platform.openai.com/)
 
 
 Herramienta informativa para estimar el impacto de **Shadow Payroll** y **riesgo de Establecimiento Permanente (PE)** en asignaciones internacionales hacia Argentina.

@@ -1,8 +1,8 @@
 # Shadow Payroll Calculator – Argentina 2025
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?logo=opensourceinitiative)](https://opensource.org/licenses/MIT)
-[![Status](https://img.shields.io/badge/Status-Prototype-yellow?logo=experiment)
-[![Region](https://img.shields.io/badge/Region-Argentina-blue?logo=googlemaps)
+![Status](https://img.shields.io/badge/Status-Prototype-yellow?logo=experiment)
+![Region](https://img.shields.io/badge/Region-Argentina-blue?logo=googlemaps)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.33%2B-ff4b4b?logo=streamlit)](https://streamlit.io/)
 [![LangChain](https://img.shields.io/badge/LangChain-0.2-orange?logo=chainlink)](https://www.langchain.com/)

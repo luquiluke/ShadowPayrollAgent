@@ -1,203 +1,208 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-02-06
+**Analysis Date:** 2026-02-15
 
 ## Tech Debt
 
-**Incomplete Input Form Implementation:**
-- Issue: The `render_input_form()` function in `src/shadow_payroll/ui.py` (lines 177-191) has a placeholder comment `# ...existing code for collecting other inputs...` instead of complete implementation. Essential fields like `num_children`, `housing_usd`, `school_usd`, and FX rate section are missing from the current UI flow.
-- Files: `src/shadow_payroll/ui.py` (lines 177-196)
-- Impact: The application cannot collect all required input fields that `PayrollInput` model expects. This breaks the calculation flow when users attempt to submit the form, as required fields will be missing or undefined.
-- Fix approach: Restore the removed input collection code for num_children, housing_usd, school_usd, and add the FX rate section back into the form rendering.
+**Pydantic v1 syntax in v2 project:**
+- Issue: `models.py` uses deprecated `@validator` decorator and `class Config` pattern instead of Pydantic v2's `field_validator` and `model_config = ConfigDict(...)`
+- Files: `src/shadow_payroll/models.py` (lines 9, 21-23, 70-86, 104-106, 135-137, 171-177, 187-189, 220-221)
+- Impact: Will break when Pydantic v2 fully deprecates v1 syntax in future versions. IDE warnings and type checking may fail. Inconsistent with stated code style in CLAUDE.md which explicitly forbids v1 syntax.
+- Fix approach: Migrate all model definitions to use `field_validator` with `mode='after'`, replace `class Config` blocks with `model_config = ConfigDict(frozen=True, validate_assignment=True, etc.)`. Follow Pydantic v2 migration guide.
 
-**Pydantic Version Inconsistency:**
-- Issue: Code imports and uses deprecated Pydantic v1 syntax (`validator`, `class Config`) while `requirements.txt` specifies `pydantic>=2.0.0`. The recent commit (visible in git diff) downgraded from Pydantic v2 syntax (`field_validator`, `model_config`) to v1 syntax.
-- Files: `src/shadow_payroll/models.py` (imports on line 9, validators on lines 70-86, 171-177)
-- Impact: Running against Pydantic v2.0+ will cause validation decorators to fail or behave unexpectedly. The code will issue deprecation warnings at minimum, and may fail entirely depending on Pydantic configuration.
-- Fix approach: Either update code to use Pydantic v2 syntax (`field_validator`, `ConfigDict`, `model_config`) or pin `pydantic<2.0.0` in requirements.txt. Recommend fixing code to v2 syntax since it's already specified as required.
+**Incomplete input form with duplicate error handling:**
+- Issue: `render_input_form()` in `ui.py` (lines 139-196) is incomplete. Collects only salary, duration, and spouse inputs. Line 177 has placeholder comment "# ...existing code for collecting other inputs...". Exception handling block appears twice (lines 188-196).
+- Files: `src/shadow_payroll/ui.py` (lines 139-196)
+- Impact: Form never collects `num_children`, `housing_usd`, or `school_usd` fields required by `PayrollInput` model. This causes validation errors when users try to calculate. Duplicate exception handling is dead code. The form will fail validation since `PayrollInput` requires all these fields.
+- Fix approach: Complete the form by adding missing input widgets for children count, housing benefit, and school benefit in the col2 section. Remove duplicate exception handler block (lines 193-196). Consolidate FX rate collection into this function for logical grouping.
 
-**Unused Import in models.py:**
-- Issue: `ConfigDict` is imported on line 9 but never used in the file. The models use `class Config:` instead of `model_config = ConfigDict(...)`.
-- Files: `src/shadow_payroll/models.py` (line 9)
-- Impact: Dead code, minor maintainability issue, signals incomplete migration.
-- Fix approach: Remove unused import or complete migration to Pydantic v2 syntax.
+**FX metadata never stored in session state:**
+- Issue: `run_calculation()` tries to read `fx_date` and `fx_source` from session state (ui.py lines 300-301) but these are never set. The `get_fx_rate()` function returns them (line 136) but main flow doesn't capture them to session state.
+- Files: `src/shadow_payroll/ui.py` (lines 102-136, 300-301), `app.py` (lines 39-83)
+- Impact: Excel export and result display always show "Unknown" for FX date/source even when API data is available. Session state inconsistency makes debugging harder. Users cannot see the actual FX data source in final results.
+- Fix approach: In `main()` function in app.py, capture return values from `get_fx_rate()` and store in `st.session_state` before calling `run_calculation()`. Pass actual values to `ShadowPayrollResult` constructor instead of "Unknown".
 
-**Duplicate Exception Handling in UI:**
-- Issue: The `render_input_form()` function has duplicate exception handling blocks (lines 188-196 in ui.py). The same error handling code appears twice.
-- Files: `src/shadow_payroll/ui.py` (lines 188-196)
-- Impact: Code redundancy, harder to maintain, potential for inconsistent error handling in future updates.
-- Fix approach: Remove the duplicate try-except block and consolidate into single error handler.
+**Unused PE risk calculation helper:**
+- Issue: `calculate_pe_risk_level()` in `utils.py` (lines 147-173) implements PE risk logic based on assignment duration, but the LLM prompt always asks LLM to evaluate PE risk independently (llm_handler.py line 94). Helper function never called from anywhere in codebase.
+- Files: `src/shadow_payroll/utils.py` (lines 147-173), `src/shadow_payroll/llm_handler.py` (line 94)
+- Impact: Duplicate logic creates confusion about which calculation is authoritative. If LLM returns inconsistent results, there's no fallback. Dead code increases maintenance burden.
+- Fix approach: Either remove the helper function if LLM is the source of truth, or use it as validation/sanity check on LLM response. If keeping, document explicitly why both exist and which takes precedence.
+
+**Unsafe HTML rendering for CSS injection:**
+- Issue: `inject_corporate_theme()` uses `st.markdown(..., unsafe_allow_html=True)` to load local CSS file (ui.py lines 13-17). While local file loading is safer than user input, this pattern could be exploited if CSS file becomes user-modifiable.
+- Files: `src/shadow_payroll/ui.py` (lines 13-19)
+- Impact: Opens XSS vector if CSS file path becomes dynamic or user-controlled in future. Current fixed path is safe but not future-proof. Module-level execution of file I/O at import time could fail if file missing.
+- Fix approach: Use Streamlit's native styling mechanisms where possible. For custom CSS, consider using Streamlit config file instead of runtime HTML injection. If HTML injection is necessary, wrap in try-except and document security boundary clearly.
 
 ## Known Bugs
 
-**Missing FX Rate Metadata in Session State:**
-- Symptoms: When calculation is performed, `run_calculation()` attempts to retrieve `fx_date` and `fx_source` from `st.session_state` (lines 300-301 in ui.py), but these are never populated since the FX rate collection code is commented out.
-- Files: `src/shadow_payroll/ui.py` (lines 177-196, 300-301)
-- Trigger: Call `run_calculation()` after incomplete form submission
-- Workaround: The code defaults to "Unknown" for missing values, but this provides poor user experience in results output.
+**Duplicate exception handler in render_input_form():**
+- Symptoms: Second exception handler (lines 193-196 in ui.py) is unreachable dead code that duplicates lines 188-191
+- Files: `src/shadow_payroll/ui.py` (lines 188-196)
+- Trigger: Form submission with invalid data — only first handler executes
+- Workaround: Remove the second handler block
 
-**JavaScript DOM Manipulation Risk:**
-- Issue: The `inject_dark_theme()` function (lines 42-50 in ui.py) directly manipulates browser DOM classes using unsafe_allow_html=True with JavaScript. This is fragile and may break with Streamlit version updates.
-- Files: `src/shadow_payroll/ui.py` (lines 42-50)
-- Trigger: On page load
-- Workaround: Falls back gracefully if JS doesn't execute, but theme may not apply as intended.
+**Form incomplete causes validation errors:**
+- Symptoms: Form collects salary, duration, spouse but not num_children, housing_usd, school_usd. `PayrollInput` validation fails when submitted because required fields missing.
+- Files: `src/shadow_payroll/ui.py` (lines 170-186)
+- Trigger: User clicks "Calcular" button after incomplete form input
+- Workaround: Complete the form implementation to collect all fields
 
-**CSS File Loading with Dynamic Path:**
-- Issue: The `inject_corporate_theme()` function (lines 13-17 in ui.py) uses complex path resolution with `__import__('pathlib')` at module load time before proper initialization. If the CSS file is not found, the entire module import fails.
-- Files: `src/shadow_payroll/ui.py` (lines 13-19)
-- Trigger: Module import when corporate_theme.css is missing or moved
-- Workaround: None - application will crash
-- Improvement: Use try-except around CSS injection, use more robust path resolution.
+**FX rate metadata shows "Unknown" always:**
+- Symptoms: Excel exports and result display show "Fecha FX: Unknown" and "Fuente FX: Unknown" even when `get_fx_rate()` returned valid API data
+- Files: `src/shadow_payroll/ui.py` (lines 102-136, 300-301)
+- Trigger: Any calculation run
+- Workaround: Store FX metadata in session state before calculation
 
 ## Security Considerations
 
-**API Key Exposure in Session State:**
-- Risk: OpenAI API key is stored in Streamlit's `st.session_state` (line 79 in ui.py). While the code claims keys are never stored, they persist in session state for the duration of the Streamlit session, potentially visible in browser memory or logs.
-- Files: `src/shadow_payroll/ui.py` (lines 70-84)
-- Current mitigation: Session-scoped storage only (not persisted to disk), but not ideal for security-sensitive applications.
-- Recommendations: Consider using Streamlit secrets management (st.secrets), implement token expiration, add audit logging for API key access.
+**API key handling in session state:**
+- Risk: OpenAI API key stored in Streamlit session state (ui.py line 79). While session-scoped and not persisted to disk, memory exposure is possible in shared Streamlit deployments or debugging sessions.
+- Files: `src/shadow_payroll/ui.py` (line 79), `src/shadow_payroll/config.py` (line 94)
+- Current mitigation: `type="password"` input field hides visible typing. Key marked session-scoped and documented in CLAUDE.md. Streamlit reruns clear old data.
+- Recommendations: Consider using environment-only API key on production servers. Add warning if running on shared deployment. Implement session timeout. Log API key access (with redaction) for audit trail. Use Streamlit Secrets management on production.
 
-**External API Rate Limit Lack of Backoff:**
-- Risk: The `get_usd_ars_rate()` function in `src/shadow_payroll/utils.py` makes direct requests to `open.er-api.com` without exponential backoff or rate limiting. Rapid calls could trigger rate limiting or IP blocking.
-- Files: `src/shadow_payroll/utils.py` (lines 27-84)
-- Current mitigation: HTTP timeout (5 seconds) and caching (1 hour TTL)
-- Recommendations: Implement exponential backoff for failed requests, add circuit breaker pattern, monitor rate limit headers.
-
-**No Input Sanitization for LLM Prompt:**
-- Risk: User input values are directly interpolated into the LLM prompt string without sanitization (lines 76-114 in llm_handler.py). While numerical values are safer, the prompt itself could be manipulated if input validation is bypassed.
+**LLM prompt injection via user inputs:**
+- Risk: `build_tax_prompt()` in `llm_handler.py` interpolates user inputs directly into prompt (lines 76-117). If validation is bypassed, malicious input could manipulate LLM behavior.
 - Files: `src/shadow_payroll/llm_handler.py` (lines 63-118)
-- Current mitigation: Pydantic validation ensures numeric types and ranges
-- Recommendations: Add additional input sanitization in prompt building, consider parameterized prompts, validate LLM response structure strictly.
+- Current mitigation: Pydantic models validate inputs before reaching LLM handler. Float/int fields prevent text injection.
+- Recommendations: Add additional validation for comments/text fields if any user-supplied text enters prompts in future. Consider using prompt templates instead of f-string interpolation. Log all LLM prompts and responses for audit.
+
+**Streamlit multi-user deployment risks:**
+- Risk: Application designed for single-user Streamlit Cloud, but could be deployed on shared servers where users share session state or API keys due to cache_data decorator using global Streamlit cache.
+- Files: `src/shadow_payroll/ui.py` (lines 70-84), `src/shadow_payroll/utils.py` (line 87)
+- Current mitigation: None explicit
+- Recommendations: Document deployment assumptions clearly. Add warnings if detecting shared environment. Implement per-user API key isolation on production. Use Streamlit Secrets management instead of text input on secured deployments.
 
 ## Performance Bottlenecks
 
-**Large UI File:**
-- Problem: `src/shadow_payroll/ui.py` contains 342 lines - too large for a single module. It handles page config, form rendering, results display, Excel export, API key management, and sidebar info.
-- Files: `src/shadow_payroll/ui.py`
-- Cause: No separation of UI concerns into submodules
-- Improvement path: Break into `ui/forms.py`, `ui/results.py`, `ui/sidebar.py`, `ui/__init__.py` for better organization and reusability.
+**FX API call with global cache across users:**
+- Problem: `get_cached_usd_ars_rate()` decorated with `@st.cache_data()` (utils.py line 87) uses global Streamlit cache. In multi-user scenario, all users share same cached rate even if they should be isolated. Cache TTL 3600s is long for 24/7 operation with volatile markets.
+- Files: `src/shadow_payroll/utils.py` (lines 87-98)
+- Cause: Streamlit cache is global, not per-user. 1-hour TTL means stale rates during periods of currency volatility.
+- Improvement path: Make cache TTL configurable via environment variable. Document that FX rates are shared across all users (acceptable for read-only app). Consider background refresh job for shared deployments. Monitor API call patterns for rate limiting.
 
-**LLM Request Caching Not Handling Parameter Variations:**
-- Problem: The `@st.cache_data` decorator on `_cached_llm_call()` (line 120 in llm_handler.py) uses the prompt string as cache key. If similar calculations with minor differences are performed, they might hit cache unnecessarily or miss cache on trivial variations.
+**LLM response caching with weak key:**
+- Problem: `_cached_llm_call()` caches LLM responses using prompt as key (llm_handler.py line 120). If input values change slightly (e.g., salary 399999 vs 400000), new API calls occur even for near-identical scenarios.
 - Files: `src/shadow_payroll/llm_handler.py` (lines 120-147)
-- Cause: Streamlit's cache_data uses function parameters as key, including full prompt text
-- Improvement path: Consider implementing content-hash based caching or explicit cache keys based on calculation inputs rather than full prompt.
+- Cause: Prompt includes precise float values. Natural floating-point arithmetic creates unique prompts for similar inputs.
+- Improvement path: Round inputs to nearest significant unit (e.g., nearest 1000 USD) before building prompt. Or implement semantic caching that groups "similar" requests. Cache TTL is 3600s which is reasonable.
 
-**No Connection Pooling for HTTP Requests:**
-- Problem: Each FX rate request creates a new HTTP connection via `requests.get()` in utils.py (line 52). Multiple requests won't reuse connections.
-- Files: `src/shadow_payroll/utils.py` (line 52)
-- Cause: Simple requests.get() without session management
-- Improvement path: Use `requests.Session()` with connection pooling, or use aiohttp for async requests if needed.
+**Excel export creates in-memory structures:**
+- Problem: `ExcelExporter.create_report()` (excel_exporter.py lines 37-75) creates pandas DataFrame and openpyxl workbook in memory. No streaming or chunking.
+- Files: `src/shadow_payroll/excel_exporter.py` (lines 37-75)
+- Cause: Results are small (11-12 rows), so not an issue now, but pattern won't scale if multi-scenario reports added
+- Improvement path: Current approach acceptable for current scale. If expanding to scenario comparison reports, implement streaming Excel generation.
 
 ## Fragile Areas
 
-**LLM Response Parsing:**
-- Files: `src/shadow_payroll/llm_handler.py` (lines 180-229)
-- Why fragile: The JSON parsing expects very specific field names from LLM output (`ganancias_mensual`, `aportes_employee`, `neto_employee`, etc.). If LLM returns variations (different capitalization, missing fields, extra fields), parsing fails. The prompt instructions are strict, but LLM responses are inherently variable.
-- Safe modification: Add more robust JSON extraction (handle missing fields with defaults), improve error messages to show what was received, add field name normalization, consider schema validation with pydantic after parsing.
-- Test coverage: Gaps - no tests for LLM response parsing with malformed inputs. Only happy path tested via mock data.
+**Pydantic model immutability conflicts:**
+- Files: `src/shadow_payroll/models.py` (lines 97-125, 128-177, 180-214)
+- Why fragile: `BaseCalculation` and `TaxCalculation` are frozen (immutable) but `PayrollInput` is not (lines 21-23). Mix of mutable/immutable models creates cognitive load and potential for bugs.
+- Safe modification: Decide on immutability strategy. Either freeze all models consistently, or make all mutable. Add explicit test for immutability to catch future changes.
+- Test coverage: `test_models.py` includes immutability test for `BaseCalculation` (lines 102-112) but only that one model. Add tests for `TaxCalculation` and `ShadowPayrollResult` immutability.
 
-**PE Risk Validation:**
-- Files: `src/shadow_payroll/models.py` (lines 171-177)
-- Why fragile: Validator accepts both Spanish and English risk levels ("Bajo", "Medio", "Alto", "Low", "Medium", "High"). This creates inconsistency - same enum should use single language. If LLM returns different variations (e.g., "BAJO", "bajo"), validation fails.
-- Safe modification: Normalize all inputs to single language (prefer Spanish for Argentina context), use Python Enum for fixed set of values, update LLM prompt to explicitly request one of exact values with examples.
-- Test coverage: Models are tested but not PE risk enum variations.
+**UI state depends on invisible session state:**
+- Files: `src/shadow_payroll/ui.py` (lines 70-84, 300-301), `app.py` (lines 39-83)
+- Why fragile: `run_calculation()` expects `fx_date` and `fx_source` in session state (lines 300-301) but these are only set if code path reaches `get_fx_rate()` before form submission. Missing logic means "Unknown" values silently propagate.
+- Safe modification: Make session state initialization explicit at app startup. Use `st.session_state.setdefault()` to guarantee defaults exist. Document all session state keys in comments at top of file.
+- Test coverage: No UI integration tests exist, so this flow never validated automatically.
 
-**Configuration Magic Numbers:**
-- Files: `src/shadow_payroll/config.py` (lines 49-51)
-- Why fragile: Contribution rates (17% employee, 24% employer) and PE risk threshold (183 days) are hardcoded for "Argentina 2025" but may change year to year or by regulation. No mechanism to version or update these dynamically.
-- Safe modification: Move constants to database or external config file with effective dates, add version tracking, document source of each number with regulation references.
-- Test coverage: No tests validating these match current tax regulations.
+**LLM response parsing brittle to format changes:**
+- Files: `src/shadow_payroll/llm_handler.py` (lines 188-221)
+- Why fragile: Parsing expects exact JSON field names (`ganancias_mensual`, `aportes_employee`, etc.). If LLM returns slightly different format, error is caught but cryptic. Chained exception handlers hide actual problem.
+- Safe modification: Add explicit field validation before JSON parsing. Log raw LLM response on parse failure for debugging. Consider using Pydantic validation for LLM response instead of manual JSON/KeyError handling. Add retry logic with model instruction clarification.
+- Test coverage: No tests exist for LLM response parsing. Add mock LLM tests that inject malformed JSON, missing fields, and edge cases.
 
-**Excel Export Hard-coded Field Names:**
-- Files: `src/shadow_payroll/excel_exporter.py` (lines 104-116)
-- Why fragile: Monetary field detection uses hardcoded Spanish field names ("Bruto mensual ARS", "Ganancias mensual estimado", etc.). If `to_display_dict()` changes field names, Excel formatting breaks silently.
-- Safe modification: Define field metadata in models to indicate which fields are monetary, use metadata during export rather than hardcoded names.
-- Test coverage: Excel export not tested - no assertions on output format.
+**Static CSS file dependency:**
+- Files: `src/shadow_payroll/ui.py` (lines 13-19), `src/shadow_payroll/corporate_theme.css`
+- Why fragile: Module import fails if CSS file not found at exact path. File I/O happens at module load time before proper error handling. File located via pathlib.__import__ which is indirect and fragile.
+- Safe modification: Wrap CSS loading in try-except. Log warning but continue if CSS missing. Use safer path resolution. Consider embedding CSS as string or using Streamlit config.
+- Test coverage: No tests for missing CSS or styling failures.
 
 ## Scaling Limits
 
-**Streamlit Session State Limitations:**
-- Current capacity: Streamlit keeps session state in memory per user per session. With many concurrent users, memory usage grows linearly.
-- Limit: On shared Streamlit Cloud or modest servers, >100 concurrent users will cause memory pressure and crashes.
-- Scaling path: Implement server-side session storage (Redis, database), use Streamlit's backend isolation, or deploy on larger infrastructure with Streamlit Enterprise.
+**Single LLM API call per calculation:**
+- Current capacity: 1 calculation per ~5 seconds (LLM timeout at 30s)
+- Limit: Streamlit synchronous execution blocks on LLM call. No background job processing or queuing.
+- Scaling path: For multi-tenant deployment, implement async task queue (Celery + Redis) to decouple UI from LLM latency. Return pending results via polling. Cache common scenarios.
 
-**LLM API Rate Limits:**
-- Current capacity: OpenAI GPT-4o has rate limits (requests per minute, tokens per minute). Each calculation makes one LLM call.
-- Limit: With caching at 1 hour TTL, 60+ concurrent users calculating different scenarios will hit API rate limits.
-- Scaling path: Implement request queuing, add retry with exponential backoff, use cheaper model for common calculations, batch requests.
+**Session state growth in Streamlit deployments:**
+- Current capacity: Fine for single user, one session per browser
+- Limit: If using `st.cache_data()` globally across all users (which current code does with FX rates), memory grows unbounded over time
+- Scaling path: Implement per-session cache vs global cache. Use Redis for shared cache layer in multi-instance deployments. Implement cache eviction policy.
+
+**No persistence layer:**
+- Current capacity: Calculations exist only in memory during session
+- Limit: Cannot support calculation history, audit trails, or multi-session workflows
+- Scaling path: Add database layer (SQLite for dev, PostgreSQL for prod) to store calculation history
 
 ## Dependencies at Risk
 
-**OpenAI SDK Version Pinning:**
-- Risk: `requirements.txt` pins `openai>=1.30.0,<2.0`. The constraint will prevent future OpenAI 2.0 updates which may have breaking changes or require code updates.
-- Impact: Long-term maintenance burden - will need to plan migration when OpenAI 2.0 is released.
-- Migration plan: When OpenAI 2.0 available, test compatibility, update code if needed, review breaking changes in their migration guide.
+**LangChain/OpenAI API dependency:**
+- Risk: Application tightly coupled to OpenAI's GPT-4o via LangChain. No abstraction for swapping models or providers.
+- Impact: If OpenAI raises prices significantly, migrating to Claude/Anthropic requires rewriting `TaxLLMHandler` class
+- Migration plan: Extract LLM interface into abstract base class. Implement provider adapters for different LLMs. Decouple prompt format from provider.
 
-**Streamlit Rapid Development:**
-- Risk: Streamlit is under active development with frequent releases. The `streamlit>=1.33.0` constraint is loose. Minor version updates could introduce subtle UI changes or deprecate features used (like `st.cache_data`).
-- Impact: Unpredictable behavior, potential UI breaks on dependency updates.
-- Migration plan: Pin to specific minor version (e.g., `streamlit==1.33.0`), test updates before upgrading, monitor Streamlit changelog.
+**Streamlit framework lock-in:**
+- Risk: UI tightly coupled to Streamlit widgets (`st.number_input()`, `st.markdown()`, etc.). Migration to FastAPI/React would require complete UI rewrite.
+- Impact: Difficult to export as library. Single-user limitation. No multi-user or fine-grained permission support.
+- Migration plan: Separate calculation logic (framework-agnostic) from UI. Could expose as REST API and build multiple UI frontends.
 
-**LangChain Ecosystem Volatility:**
-- Risk: LangChain has significant API changes between versions. Current requirement `langchain>=0.3.0` and `langchain-openai>=0.2.0` are loose constraints.
-- Impact: Code may break on minor updates (e.g., ChatOpenAI initialization changes).
-- Migration plan: Pin versions more tightly (e.g., `langchain==0.3.x`), monitor LangChain migration guides.
+**Open.er-api.com FX API dependency:**
+- Risk: External free API with no SLA. If service goes down, app shows fallback rate but silently loses accuracy.
+- Impact: Calculations show hardcoded 1000 ARS/USD when API fails (config.py line 30). Users don't know they're using stale rates.
+- Migration plan: Implement fallback chain. Add explicit warning to UI when using non-current rates. Consider paid FX data service for production.
 
 ## Missing Critical Features
 
-**No Error Recovery Mechanism:**
-- Problem: If LLM call fails, calculation stops completely. No retry logic, no fallback to previous calculation, no ability to re-attempt.
-- Blocks: Users must reload page and recalculate from scratch on transient API errors.
-- Recommendation: Implement retry decorator with exponential backoff, add manual retry button in UI, cache last successful result.
+**No audit trail or calculation history:**
+- Problem: Users cannot review past calculations or export calculation audit trail for tax compliance. Each calculation is ephemeral.
+- Blocks: Compliance workflows, client delivery, dispute resolution
+- Path: Add persistent storage. Store calculation inputs, LLM prompt, LLM response, final result, timestamp, user ID. Export audit report.
 
-**No Audit Logging:**
-- Problem: Calculations are performed but not logged to persistent storage. No way to track what calculations were performed, when, or with what inputs. Especially important for tax compliance scenarios.
-- Blocks: Compliance audit trails, user support (can't reproduce user's calculation), security monitoring.
-- Recommendation: Log all calculations to database with timestamp, user ID (if added), inputs, outputs, API costs.
+**No scenario comparison:**
+- Problem: Users cannot easily compare different assumption scenarios (e.g., "what if salary was 10% higher?").
+- Blocks: Planning workflows, budgeting
+- Path: Implement scenario builder. Store multiple calculations in session. Compare side-by-side. Export comparison matrix.
 
-**No Multi-User Support:**
-- Problem: Application is single-user per Streamlit session. No concept of user accounts, authentication, or data isolation between users.
-- Blocks: Enterprise deployment, multi-user scenarios, saving/sharing calculations.
-- Recommendation: Add authentication layer (Auth0, Streamlit Cloud auth), implement user accounts, add persistent storage for saved calculations.
-
-**No Input Undo/History:**
-- Problem: Users cannot see calculation history or undo changes. Each calculation starts fresh.
-- Blocks: Comparing scenarios, auditing changes, learning from past calculations.
-- Recommendation: Add calculation history page, allow users to save scenarios, compare side-by-side results.
+**No manual override for LLM-calculated values:**
+- Problem: Users cannot override LLM's tax estimate if they believe it's wrong or have known exceptions.
+- Blocks: Expert workflows, exception handling
+- Path: Add "Override" mode in results UI. Allow manual entry of tax amounts. Store override flag and reason in audit trail.
 
 ## Test Coverage Gaps
 
-**No LLM Response Parsing Tests:**
-- What's not tested: How `calculate_tax()` in `llm_handler.py` handles malformed LLM responses, missing fields, incorrect data types, or unexpected field variations.
-- Files: `src/shadow_payroll/llm_handler.py` (lines 149-229) - no corresponding test file for this module
-- Risk: Silent failures or cryptic error messages if LLM response format changes
-- Priority: High - this is critical path code that converts unstructured LLM output to structured data
+**No tests for LLM response parsing:**
+- What's not tested: `TaxLLMHandler.calculate_tax()` method, JSON parsing with malformed responses, missing fields, invalid PE risk levels
+- Files: `src/shadow_payroll/llm_handler.py` (lines 149-229)
+- Risk: LLM response format changes or API errors not caught until production. Current error handling is defensive but untested.
+- Priority: **High** — LLM integration is core to application. A single bad LLM response cascades to user error.
 
-**No UI Integration Tests:**
-- What's not tested: Form validation flow, button clicks, Streamlit state management, session handling. The `render_input_form()` and `run_calculation()` functions in `ui.py` have no tests.
-- Files: `src/shadow_payroll/ui.py` (entire file)
-- Risk: UI bugs go undetected until user testing. Complete workflows untested.
-- Priority: High - UI is user-facing
+**No tests for UI components:**
+- What's not tested: Form input validation, API key entry flow, FX rate display, results rendering, Excel download
+- Files: `src/shadow_payroll/ui.py` (all functions)
+- Risk: Form validation incomplete (lines 139-192) — only caught by manual testing. Streamlit reruns and widget state management complex to test.
+- Priority: **High** — UI is user-facing and currently broken (incomplete form).
 
-**No Excel Export Tests:**
-- What's not tested: Whether Excel files are generated correctly, formatting is applied, currency symbols are present. The `ExcelExporter` class has no test suite.
-- Files: `src/shadow_payroll/excel_exporter.py`
-- Risk: Users may download broken Excel files without knowing
-- Priority: Medium - less critical than calculations but affects user satisfaction
+**No tests for Excel export:**
+- What's not tested: Excel file generation, styling application, cell formatting, multiple sheet generation
+- Files: `src/shadow_payroll/excel_exporter.py` (lines 37-165)
+- Risk: Excel output could corrupt silently. Users see broken files only after download.
+- Priority: **Medium** — Feature is user-facing. Broken exports harm trust.
 
-**No FX API Failure Scenario Tests:**
-- What's not tested: How application behaves when FX API is down, slow, or returns invalid data. Current tests only mock successful responses.
-- Files: `src/shadow_payroll/utils.py` (lines 27-84), `tests/test_utils.py`
-- Risk: Application may crash or hang on real API failures
-- Priority: Medium - reliability issue but not calculation-critical
+**No end-to-end integration tests:**
+- What's not tested: Complete flow from input form → calculation → LLM call → result display → Excel export
+- Files: Span across all modules
+- Risk: Individual modules tested but integration points fragile. Session state, FX metadata, async flows not validated.
+- Priority: **Medium** — E2E tests catch issues that unit tests miss.
 
-**No Configuration Validation Tests:**
-- What's not tested: Whether config values are within acceptable ranges, whether missing env vars cause problems.
-- Files: `src/shadow_payroll/config.py`
-- Risk: Invalid configuration silently affects calculations
-- Priority: Low - configuration is mostly static
+**No tests for error scenarios:**
+- What's not tested: OpenAI API errors, FX API timeouts, invalid model responses, network failures
+- Files: `src/shadow_payroll/llm_handler.py`, `src/shadow_payroll/utils.py`
+- Risk: Error paths untested. Exception messages unclear. Recovery flows undefined.
+- Priority: **Medium** — Users will encounter errors in production. Better error handling improves UX.
 
 ---
 
-*Concerns audit: 2026-02-06*
+*Concerns audit: 2026-02-15*

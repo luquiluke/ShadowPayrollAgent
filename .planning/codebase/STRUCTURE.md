@@ -1,6 +1,6 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-02-06
+**Analysis Date:** 2026-02-15
 
 ## Directory Layout
 
@@ -17,7 +17,6 @@ ShadowPayrollAgent-refactored/
 │   ├── __init__.py
 │   └── shadow_payroll/
 │       ├── __init__.py                 # Package exports
-│       ├── app.py                      # Deprecated entry point
 │       ├── models.py                   # Pydantic data models
 │       ├── calculations.py             # Payroll calculation logic
 │       ├── llm_handler.py              # LLM integration with OpenAI
@@ -232,4 +231,4 @@ tests/
 
 ---
 
-*Structure analysis: 2026-02-06*
+*Structure analysis: 2026-02-15*

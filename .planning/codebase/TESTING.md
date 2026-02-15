@@ -1,32 +1,31 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-02-06
+**Analysis Date:** 2026-02-15
 
 ## Test Framework
 
 **Runner:**
-- Framework: `pytest`
-- Version: Not pinned in visible config (installed via requirements.txt)
-- Config file: `pytest.ini` and `pyproject.toml` [tool.pytest.ini_options]
+- Framework: `pytest` (>=8.0.0)
+- Config file: `pyproject.toml` [tool.pytest.ini_options]
 
 **Assertion Library:**
 - Built-in `assert` statements with pytest enhancements
-- `pytest.approx()` for floating-point comparisons: `assert safe_divide(10.0, 3.0) == pytest.approx(3.333333, rel=1e-5)`
-- `pytest.raises()` for exception testing: `with pytest.raises(ValueError, match="Salary must be between"):`
+- `pytest.approx()` for floating-point comparisons
+- `pytest.raises()` for exception testing with optional `match` parameter for message matching
 
 **Run Commands:**
 ```bash
-pytest                          # Run all tests with verbose output
-pytest -v                       # Verbose output
-pytest --tb=short              # Short traceback format
-pytest --cov=src/shadow_payroll # With coverage report
-pytest --cov-report=html       # Generate HTML coverage report
-pytest tests/                  # Run specific directory
-pytest tests/test_models.py    # Run specific file
-pytest -k test_calculate_base  # Run tests matching pattern
+pytest                                    # Run all tests with default options
+pytest -v                                 # Verbose output
+pytest tests/test_models.py               # Run specific file
+pytest tests/test_calculations.py::TestPayrollCalculator  # Run specific class
+pytest -k test_calculate_base             # Run tests matching pattern
+pytest --cov=src/shadow_payroll           # With coverage report
+pytest --cov-report=html                  # Generate HTML coverage report
+pytest --tb=short                         # Short traceback format
 ```
 
-**Configuration Details from `pyproject.toml`:**
+**Configuration from `pyproject.toml`:**
 ```toml
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -48,69 +47,70 @@ markers = [
 ]
 ```
 
+**Default behavior:**
+- Always runs with verbose output (`-v`)
+- Always generates coverage report
+- Uses short traceback format for failures
+- Enforces marker registry (unknown markers cause errors)
+
 ## Test File Organization
 
 **Location:**
-- Co-located in separate `tests/` directory (not alongside source code)
-- Directory structure mirrors source: `tests/test_<module>.py` for `src/<module>.py`
+- Tests in separate `tests/` directory (not co-located with source)
+- Mirrors source structure: `tests/test_<module>.py` for `src/shadow_payroll/<module>.py`
 
 **Current test files:**
-- `tests/conftest.py` - Shared fixtures
-- `tests/test_models.py` - Pydantic model tests
-- `tests/test_calculations.py` - Business logic tests
-- `tests/test_utils.py` - Utility function tests
+- `tests/__init__.py` - Empty package marker
+- `tests/conftest.py` - Shared fixtures and configuration
+- `tests/test_models.py` - Pydantic model validation (265 lines, ~18 test methods)
+- `tests/test_calculations.py` - Business logic tests (201 lines, ~18 test methods)
+- `tests/test_utils.py` - Utility function tests (147 lines, ~15 test methods)
 
-**Naming:**
+**Naming conventions:**
 - File: `test_<module_name>.py`
 - Class: `Test<SubjectName>` (e.g., `TestPayrollCalculator`, `TestValidateCalculationInputs`)
 - Method: `test_<scenario>` (e.g., `test_calculate_base_basic`, `test_negative_salary_rejected`)
 
-**Directory Structure:**
+**Directory structure:**
 ```
 tests/
 ├── __init__.py
-├── conftest.py              # Shared fixtures and configuration
-├── test_calculations.py     # PayrollCalculator and validation tests
+├── conftest.py              # Shared fixtures
+├── test_calculations.py     # PayrollCalculator and validate_calculation_inputs tests
 ├── test_models.py          # Pydantic model validation tests
 └── test_utils.py           # Utility function tests
 ```
 
 ## Test Structure
 
-**Suite Organization:**
-All test classes group related tests. Example from `tests/test_calculations.py`:
+**Test Class Organization:**
+Tests grouped by subject in classes. Example from `tests/test_models.py`:
 
 ```python
-class TestPayrollCalculator:
-    """Test suite for PayrollCalculator class."""
+class TestPayrollInput:
+    """Test suite for PayrollInput model."""
 
-    def test_calculate_base_basic(self):
-        """Test basic calculation with simple inputs."""
-        # Setup
-        input_data = PayrollInput(...)
-        calculator = PayrollCalculator()
+    def test_valid_input(self):
+        """Test creating valid PayrollInput."""
+        input_data = PayrollInput(
+            salary_usd=100000.0,
+            duration_months=12,
+            has_spouse=True,
+            num_children=2,
+            housing_usd=20000.0,
+            school_usd=15000.0,
+            fx_rate=1000.0,
+        )
 
-        # Execute
-        result = calculator.calculate_base(input_data)
-
-        # Assert
-        assert result.salary_monthly_ars == 10_000_000.0
-        assert result.benefits_monthly_ars == 3_000_000.0
-        assert result.gross_monthly_ars == 13_000_000.0
-        assert result.fx_rate == 1000.0
-
-class TestValidateCalculationInputs:
-    """Test suite for input validation."""
-
-    def test_validate_valid_inputs(self):
-        """Test validation with valid inputs."""
-        # Should not raise any exception
-        validate_calculation_inputs(...)
+        assert input_data.salary_usd == 100000.0
+        assert input_data.duration_months == 12
+        assert input_data.has_spouse is True
+        assert input_data.num_children == 2
 ```
 
-**Patterns:**
+**Typical test structure follows Arrange-Act-Assert pattern:**
 
-1. **Setup Phase:** Create test data and objects
+1. **Arrange/Setup:** Create test data and objects
 ```python
 input_data = PayrollInput(
     salary_usd=120000.0,
@@ -122,45 +122,48 @@ input_data = PayrollInput(
 calculator = PayrollCalculator()
 ```
 
-2. **Execution Phase:** Call the function/method under test
+2. **Act/Execute:** Call the function or method under test
 ```python
 result = calculator.calculate_base(input_data)
-summary = calculator.calculate_summary(input_data, base)
 ```
 
-3. **Assertion Phase:** Verify results
+3. **Assert:** Verify results
 ```python
 assert result.salary_monthly_ars == 10_000_000.0
 assert result.benefits_monthly_ars == 3_000_000.0
-assert "gross_monthly_ars" in summary
+assert result.gross_monthly_ars == 13_000_000.0
 ```
 
 4. **Teardown:** Not typically used (fixtures handle cleanup)
 
 ## Mocking
 
-**Framework:** Not detected in codebase
+**Framework:** Not heavily used in current tests
 
-**Current approach:** No external mocking library (unittest.mock, pytest-mock) observed in tests. Instead:
-- Tests use real Pydantic models
-- Tests use real calculation functions
-- No mocking of FX API calls observed yet
-- No mocking of LLM calls in existing tests
+**Current approach:**
+- Tests use real Pydantic models (not mocked)
+- Tests use real calculation functions (deterministic, no external deps)
+- Tests use real utility functions
 
-**What IS being tested:**
+**What is tested without mocking:**
 - Model validation (actual Pydantic validators)
 - Business calculations (real PayrollCalculator methods)
-- Utility functions (real functions with deterministic behavior)
+- Utility functions (real functions: format_currency_ars, calculate_pe_risk_level, etc.)
 
-**What's NOT tested yet:**
-- External API calls (FX rate fetching)
-- LLM integration (would need mocking)
-- Streamlit UI components (would need specialized testing)
+**What's NOT tested yet (would need mocking):**
+- External API calls (FX rate fetching via requests)
+- LLM integration (OpenAI API calls via langchain)
+- Streamlit UI components (would need streamlit.testing.v1)
+- Caching behavior (@st.cache_data decorator)
+
+**Recommended mocking setup when needed:**
+- Use `pytest-mock` (in requirements.txt) for fixtures
+- Mock `requests.get()` for FX API testing
+- Mock `ChatOpenAI.invoke()` for LLM handler testing
 
 ## Fixtures and Factories
 
-**Test Data:**
-Defined in `tests/conftest.py`:
+**Shared fixtures in `tests/conftest.py`:**
 
 ```python
 @pytest.fixture
@@ -209,30 +212,18 @@ def mock_fx_data():
     }
 ```
 
-**Location:**
-- Shared fixtures: `tests/conftest.py`
-- Test-specific fixtures: Can be added inline in individual test files if needed
+**Fixture usage:**
+- Fixtures are injected as function parameters
+- Single fixture instance reused per test function (function scope)
+- Can be combined: `def test_method(self, sample_payroll_input, sample_base_calculation):`
 
-**Factory Pattern:**
-- Fixtures serve as test data factories
-- Each fixture returns valid test data for a specific model
-- Fixtures are reusable across multiple test classes/functions
+**Location:**
+- Shared fixtures: `tests/conftest.py` (available to all tests)
+- Test-specific fixtures: Can add directly in individual test files if needed
 
 ## Coverage
 
-**Requirements:**
-- Target coverage not explicitly stated
-- HTML reports generated by default: `--cov-report=html`
-- Terminal reports with missing line info: `--cov-report=term-missing`
-
-**View Coverage:**
-```bash
-pytest --cov=src/shadow_payroll --cov-report=term-missing
-pytest --cov=src/shadow_payroll --cov-report=html
-# Then open htmlcov/index.html in browser
-```
-
-**Coverage Config from `pyproject.toml`:**
+**Configuration from `pyproject.toml`:**
 ```toml
 [tool.coverage.run]
 source = ["src/shadow_payroll"]
@@ -253,9 +244,23 @@ exclude_lines = [
 ]
 ```
 
+**Generate coverage reports:**
+```bash
+pytest --cov=src/shadow_payroll --cov-report=term-missing
+# Shows missing line numbers in terminal
+
+pytest --cov=src/shadow_payroll --cov-report=html
+# Opens htmlcov/index.html in browser for detailed view
+```
+
+**Current coverage:**
+- Target coverage: Not explicitly stated
+- Reports generated by default on every test run
+- HTML reports saved to `htmlcov/` directory
+
 ## Test Types
 
-**Unit Tests:**
+**Unit Tests (Dominant):**
 - Scope: Individual functions, classes, and methods
 - Approach: Isolated, fast, deterministic
 - Examples:
@@ -264,16 +269,16 @@ exclude_lines = [
   - `test_format_positive_amount()` - Tests format_currency_ars()
 - Characteristics: No external API calls, no I/O, pure computation
 
-**Integration Tests:**
-- Defined via marker but not heavily used yet
-- Would test: Multiple components working together (e.g., input → calculation → result model)
+**Integration Tests (Defined but not used):**
+- Defined via marker: `@pytest.mark.integration`
+- Would test: Multiple components working together (e.g., input → validation → calculation → result model)
 - Could test: FX API integration, LLM integration
-- Marker available: `@pytest.mark.integration`
+- Not yet implemented (no tests marked with `@pytest.mark.integration`)
 
 **E2E Tests:**
 - Not implemented
 - Would require: Streamlit testing framework (streamlit.testing.v1)
-- Would test: Full UI workflows
+- Would test: Full UI workflows end-to-end
 
 ## Common Patterns
 
@@ -296,13 +301,21 @@ def test_valid_input(self):
     assert input_data.has_spouse is True
 ```
 
-**Validation Error Testing:**
+**Pydantic ValidationError Testing:**
 ```python
 def test_negative_salary_rejected(self):
     """Test negative salary is rejected."""
     with pytest.raises(ValidationError):
         PayrollInput(salary_usd=-50000.0, fx_rate=1000.0)
 
+def test_unreasonably_high_fx_rate_rejected(self):
+    """Test unreasonably high FX rate is rejected."""
+    with pytest.raises(ValidationError, match="unreasonably high"):
+        PayrollInput(fx_rate=200000.0)
+```
+
+**ValueError Testing with Message Matching:**
+```python
 def test_validate_salary_too_high(self):
     """Test validation fails with excessive salary."""
     with pytest.raises(ValueError, match="Salary must be between"):
@@ -315,7 +328,62 @@ def test_validate_salary_too_high(self):
         )
 ```
 
-**Multiple Scenario Testing:**
+**Business Logic Testing:**
+```python
+def test_calculate_summary(self):
+    """Test calculation summary generation."""
+    input_data = PayrollInput(
+        salary_usd=120000.0,
+        duration_months=12,
+        housing_usd=24000.0,
+        school_usd=12000.0,
+        fx_rate=1000.0,
+    )
+
+    calculator = PayrollCalculator()
+    base = calculator.calculate_base(input_data)
+    summary = calculator.calculate_summary(input_data, base)
+
+    assert summary["duration_months"] == 12
+    assert summary["duration_days"] == 360
+    assert "gross_monthly_ars" in summary
+    assert "total_cost_assignment_ars" in summary
+```
+
+**Boundary Testing:**
+```python
+def test_medium_risk_borderline(self):
+    """Test medium risk for borderline durations."""
+    # 6 months = 180 days (just under 183 day threshold)
+    assert calculate_pe_risk_level(6) == "Bajo"
+
+    # 7 months = 210 days (over threshold)
+    assert calculate_pe_risk_level(7) == "Medio"
+```
+
+**Floating Point Comparison:**
+```python
+def test_decimal_result(self):
+    """Test division resulting in decimal."""
+    assert safe_divide(10.0, 3.0) == pytest.approx(3.333333, rel=1e-5)
+```
+
+**Immutability Testing (Frozen Models):**
+```python
+def test_base_calculation_is_frozen(self):
+    """Test BaseCalculation is immutable."""
+    base = BaseCalculation(
+        salary_monthly_ars=10_000_000.0,
+        benefits_monthly_ars=2_000_000.0,
+        gross_monthly_ars=12_000_000.0,
+        fx_rate=1000.0,
+    )
+
+    with pytest.raises(ValidationError):
+        base.fx_rate = 1200.0
+```
+
+**Multiple Scenarios Testing:**
 ```python
 def test_calculate_base_zero_benefits(self):
     """Test calculation with zero benefits."""
@@ -334,62 +402,64 @@ def test_calculate_base_zero_benefits(self):
     assert result.gross_monthly_ars == result.salary_monthly_ars
 ```
 
-**Boundary Testing:**
+**Helper Function Testing:**
 ```python
-def test_medium_risk_borderline(self):
-    """Test medium risk for borderline durations."""
-    # 6 months = 180 days (just under threshold)
-    assert calculate_pe_risk_level(6) == "Bajo"
+def test_clean_json_with_backticks(self):
+    """Test cleaning JSON wrapped in markdown fences."""
+    raw = '```json\n{"key": "value"}\n```'
+    cleaned = clean_llm_json_response(raw)
+    assert cleaned == '{"key": "value"}'
 
-    # 7 months = 210 days (just over threshold)
-    assert calculate_pe_risk_level(7) == "Medio"
-```
-
-**Floating Point Comparison:**
-```python
-def test_decimal_result(self):
-    """Test division resulting in decimal."""
-    assert safe_divide(10.0, 3.0) == pytest.approx(3.333333, rel=1e-5)
-```
-
-**Error Message Matching:**
-```python
-def test_error_message_includes_field_name(self):
-    """Test error message includes field name."""
-    with pytest.raises(ValueError, match="Salary must be positive"):
-        validate_positive_number(-100.0, "Salary")
-```
-
-**Immutability Testing (Frozen Models):**
-```python
-def test_base_calculation_is_frozen(self):
-    """Test BaseCalculation is immutable."""
-    base = BaseCalculation(
-        salary_monthly_ars=10_000_000.0,
-        benefits_monthly_ars=2_000_000.0,
-        gross_monthly_ars=12_000_000.0,
-        fx_rate=1000.0,
-    )
-
-    with pytest.raises(ValidationError):
-        base.fx_rate = 1200.0
+def test_clean_already_clean_json(self):
+    """Test cleaning already clean JSON."""
+    raw = '{"key": "value"}'
+    cleaned = clean_llm_json_response(raw)
+    assert cleaned == '{"key": "value"}'
 ```
 
 ## Test Execution Notes
 
-**Default Test Discovery:**
-- Looks in `tests/` directory
-- Finds files matching `test_*.py`
+**Default test discovery:**
+- Finds files matching `test_*.py` in `tests/` directory
 - Finds classes matching `Test*`
-- Finds functions matching `test_*`
+- Finds methods matching `test_*`
 
-**Test Markers:**
-Available markers (from `pyproject.toml`):
+**Available markers (from pyproject.toml):**
 - `@pytest.mark.unit` - For unit tests
 - `@pytest.mark.integration` - For integration tests
-- `@pytest.mark.slow` - For slow tests
-- `--strict-markers` enforced (unknown markers cause errors)
+- `@pytest.mark.slow` - For slow/long-running tests
+- `--strict-markers` enforced (unknown markers cause test failure)
+
+**Run tests by marker:**
+```bash
+pytest -m unit              # Run only unit tests
+pytest -m integration       # Run only integration tests
+pytest -m "not slow"        # Run all except slow tests
+```
+
+## Known Test Gaps
+
+**Not tested yet (identified in CONCERNS.md):**
+1. **LLM response parsing** - `llm_handler.py` calculate_tax() method
+   - JSON parsing and field extraction logic not covered
+   - Error handling for malformed LLM responses untested
+
+2. **FX rate caching** - `utils.py` get_cached_usd_ars_rate()
+   - Streamlit cache behavior not testable without mocking
+   - Cache invalidation logic untested
+
+3. **UI components** - `ui.py` all functions
+   - Streamlit components require specialized testing
+   - Would need `streamlit.testing.v1` framework
+
+4. **Excel export** - `excel_exporter.py`
+   - File generation not tested
+   - Missing in test suite entirely
+
+5. **Error recovery** - All modules
+   - Graceful degradation not systematically tested
+   - Fallback paths partially untested
 
 ---
 
-*Testing analysis: 2026-02-06*
+*Testing analysis: 2026-02-15*

@@ -9,6 +9,8 @@ import logging
 import sys
 from pathlib import Path
 
+import streamlit as st
+
 # Add src to path for imports
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
@@ -18,6 +20,7 @@ from shadow_payroll.ui import (
     render_header,
     get_api_key,
     render_api_key_prompt,
+    render_fx_sidebar,
     render_input_form,
     render_results,
     render_excel_download,
@@ -54,6 +57,15 @@ def main():
         render_sidebar_info()
         return
 
+    # Initialize FX session state defaults
+    st.session_state.setdefault("fx_rate", config.FX_DEFAULT_RATE)
+    st.session_state.setdefault("fx_date", "Not yet fetched")
+    st.session_state.setdefault("fx_source", "Default")
+    st.session_state.setdefault("fx_stale", True)
+
+    # Render FX sidebar (populates session state with FX data)
+    render_fx_sidebar()
+
     # Render sidebar
     render_sidebar_info()
 
@@ -65,7 +77,7 @@ def main():
         return
 
     # Calculate button
-    if st.button("🚀 Calcular Shadow Payroll", type="primary", use_container_width=True):
+    if st.button("Calculate Shadow Payroll", type="primary", use_container_width=True):
         logger.info("Calculation triggered")
 
         result = run_calculation(input_data, api_key)
@@ -78,6 +90,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import streamlit as st
-
     main()

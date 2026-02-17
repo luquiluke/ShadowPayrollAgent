@@ -5,7 +5,7 @@ This module contains all UI-related functions and page rendering logic.
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Optional
 
 import streamlit as st
 
@@ -99,41 +99,48 @@ def render_api_key_prompt() -> None:
     """)
 
 
-def get_fx_rate() -> Tuple[float, str, str]:
+def render_fx_sidebar() -> None:
     """
-    Get exchange rate from API or manual input.
+    Render a persistent FX rate sidebar widget.
 
-    Returns:
-        Tuple[float, str, str]: (rate, date, source)
+    Fetches the live exchange rate, displays it with metadata,
+    and provides a manual override option. Populates session state
+    with fx_rate, fx_date, fx_source, and fx_stale.
     """
-    fx_data = get_cached_usd_ars_rate()
+    with st.sidebar:
+        st.subheader("Exchange Rate")
+        fx_data = get_cached_usd_ars_rate()
 
-    if fx_data:
-        st.success(
-            f"Auto FX rate: **{fx_data['rate']:,.2f} ARS/USD** | "
-            f"Date: {fx_data['date']} | Source: {fx_data['source']}"
+        if fx_data:
+            st.info(
+                f"**{fx_data['rate']:,.2f} ARS/USD**\n\n"
+                f"Updated: {fx_data['date']}\n\n"
+                f"Source: {fx_data['source']}"
+            )
+            st.session_state["fx_rate"] = fx_data["rate"]
+            st.session_state["fx_date"] = fx_data["date"]
+            st.session_state["fx_source"] = fx_data["source"]
+            st.session_state["fx_stale"] = False
+        else:
+            cached_rate = st.session_state.get("fx_rate", config.FX_DEFAULT_RATE)
+            st.warning(
+                f"**Using cached rate: {cached_rate:,.2f} ARS/USD**\n\n"
+                f"API unavailable — data may be stale"
+            )
+            st.session_state["fx_stale"] = True
+
+        # Manual override
+        override = st.number_input(
+            "Manual FX Override",
+            value=st.session_state.get("fx_rate", config.FX_DEFAULT_RATE),
+            min_value=1.0,
+            max_value=100000.0,
+            help="Override the automatic exchange rate",
         )
-        default_rate = fx_data["rate"]
-        fx_date = fx_data["date"]
-        fx_source = fx_data["source"]
-    else:
-        st.warning(
-            "Could not retrieve automatic exchange rate. "
-            "Please enter a manual value."
-        )
-        default_rate = config.FX_DEFAULT_RATE
-        fx_date = "Manual"
-        fx_source = "Manual"
-
-    rate = st.number_input(
-        "Tax FX Rate ARS/USD",
-        value=default_rate,
-        min_value=1.0,
-        max_value=100000.0,
-        help="Exchange rate for USD to ARS conversion",
-    )
-
-    return rate, fx_date, fx_source
+        if override != st.session_state.get("fx_rate"):
+            st.session_state["fx_rate"] = override
+            st.session_state["fx_source"] = "Manual"
+            st.session_state["fx_date"] = "Manual entry"
 
 
 def render_input_form() -> Optional[PayrollInput]:
@@ -145,10 +152,8 @@ def render_input_form() -> Optional[PayrollInput]:
     """
     st.subheader("Assignment Details")
 
-    # Get FX rate
-    fx_rate, fx_date, fx_source = get_fx_rate()
-    st.session_state["fx_date"] = fx_date
-    st.session_state["fx_source"] = fx_source
+    # Read FX rate from session state (populated by render_fx_sidebar)
+    fx_rate = st.session_state.get("fx_rate", config.FX_DEFAULT_RATE)
 
     col1, col2 = st.columns(2)
 
@@ -288,6 +293,8 @@ def render_results(result: ShadowPayrollResult) -> None:
         st.write(f"**Exchange Rate:** {result.base.fx_rate:,.2f} ARS/USD")
         st.write(f"**FX Date:** {result.fx_date}")
         st.write(f"**FX Source:** {result.fx_source}")
+        if st.session_state.get("fx_stale", False):
+            st.warning("Exchange rate data may be stale — API was unavailable")
 
 
 def render_excel_download(result: ShadowPayrollResult) -> None:

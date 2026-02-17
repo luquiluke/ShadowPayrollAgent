@@ -55,7 +55,7 @@ class ExcelExporter:
         data = result.to_display_dict()
 
         # Create DataFrame
-        df = pd.DataFrame(list(data.items()), columns=["Campo", "Resultado"])
+        df = pd.DataFrame(list(data.items()), columns=["Field", "Value"])
 
         # Create Excel file in memory
         output = BytesIO()
@@ -102,12 +102,12 @@ class ExcelExporter:
         # Apply ARS currency format to numeric values (rows 2-7)
         # These correspond to the monetary fields in the result
         monetary_fields = [
-            "Bruto mensual ARS",
-            "Ganancias mensual estimado",
-            "Aportes employee",
-            "Neto employee",
-            "Aportes employer",
-            "Costo total employer",
+            "Gross Monthly (ARS)",
+            "Income Tax Monthly (est.)",
+            "Employee Contributions",
+            "Net Employee",
+            "Employer Contributions",
+            "Total Employer Cost",
         ]
 
         for row_idx in range(2, len(df) + 2):  # +2 because Excel is 1-indexed + header
@@ -144,20 +144,20 @@ class ExcelExporter:
             # Summary sheet
             summary_data = result.to_display_dict()
             df_summary = pd.DataFrame(
-                list(summary_data.items()), columns=["Campo", "Resultado"]
+                list(summary_data.items()), columns=["Field", "Value"]
             )
-            df_summary.to_excel(writer, index=False, sheet_name='Resumen')
+            df_summary.to_excel(writer, index=False, sheet_name='Summary')
 
             # Details sheet
             df_details = pd.DataFrame(
-                list(input_summary.items()), columns=["Parámetro", "Valor"]
+                list(input_summary.items()), columns=["Parameter", "Value"]
             )
-            df_details.to_excel(writer, index=False, sheet_name='Detalle')
+            df_details.to_excel(writer, index=False, sheet_name='Details')
 
             # Apply styling to both sheets
             workbook = writer.book
-            ExcelExporter._apply_styling(workbook['Resumen'], df_summary)
-            ExcelExporter._apply_styling(workbook['Detalle'], df_details)
+            ExcelExporter._apply_styling(workbook['Summary'], df_summary)
+            ExcelExporter._apply_styling(workbook['Details'], df_details)
 
         output.seek(0)
         logger.info("Detailed Excel report generated successfully")

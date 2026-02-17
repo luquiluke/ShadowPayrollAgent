@@ -74,46 +74,46 @@ class TaxLLMHandler:
             str: Formatted prompt for LLM
         """
         prompt = f"""
-Sos un especialista senior en Impuesto a las Ganancias Argentina, payroll y expatriados (año 2025).
+You are a senior specialist in Argentine Income Tax, payroll, and expatriates (2025).
 
-Datos del caso:
-- Bruto mensual ARS: {base.gross_monthly_ars:,.2f}
-- Salario mensual ARS: {base.salary_monthly_ars:,.2f}
-- Beneficios mensuales ARS: {base.benefits_monthly_ars:,.2f}
-- Cónyuge a cargo: {"Sí" if input_data.has_spouse else "No"}
-- Hijos a cargo: {input_data.num_children}
-- Duración asignación (meses): {input_data.duration_months}
-- FX utilizado: {input_data.fx_rate:,.2f} ARS/USD
+Case data:
+- Gross monthly ARS: {base.gross_monthly_ars:,.2f}
+- Salary monthly ARS: {base.salary_monthly_ars:,.2f}
+- Benefits monthly ARS: {base.benefits_monthly_ars:,.2f}
+- Dependent spouse: {"Yes" if input_data.has_spouse else "No"}
+- Dependent children: {input_data.num_children}
+- Assignment duration (months): {input_data.duration_months}
+- FX rate used: {input_data.fx_rate:,.2f} ARS/USD
 
-Instrucciones:
-1. Calculá shadow payroll mensual estimado 2025 para Argentina.
-2. Incluí:
-   - Impuesto a las Ganancias (4ta categoría) considerando deducciones personales
-   - Aportes employee (~17%): jubilación, obra social, PAMI
-   - Aportes employer (~24%): contribuciones patronales
-3. Evaluá riesgo de Establecimiento Permanente (PE) considerando:
-   - Duración de la asignación (>183 días = mayor riesgo)
-   - Tipo de actividades
-   - Presencia física en Argentina
-4. Indicá alertas fiscales y de compliance si corresponden.
+Instructions:
+1. Calculate estimated monthly shadow payroll for Argentina (2025).
+2. Include:
+   - Income tax (Ganancias, 4th category) considering personal deductions
+   - Employee contributions (~17%): retirement, health insurance, PAMI
+   - Employer contributions (~24%): employer social charges
+3. Evaluate Permanent Establishment (PE) risk considering:
+   - Assignment duration (>183 days = higher risk)
+   - Type of activities
+   - Physical presence in Argentina
+4. Flag any tax or compliance alerts as applicable.
 
-Consideraciones importantes:
-- Las deducciones personales varían según cónyuge e hijos a cargo
-- El mínimo no imponible debe aplicarse correctamente
-- Los porcentajes son aproximados y pueden variar
+Important considerations:
+- Personal deductions vary based on spouse and dependent children
+- The non-taxable minimum must be applied correctly
+- Percentages are approximate and may vary
 
-Respondé SOLO con JSON válido, sin Markdown, con esta estructura exacta:
+Respond ONLY with valid JSON, no Markdown, with this exact structure:
 {{
-  "ganancias_mensual": <número>,
-  "aportes_employee": <número>,
-  "neto_employee": <número>,
-  "aportes_employer": <número>,
-  "total_cost_employer": <número>,
-  "pe_risk": "Bajo | Medio | Alto",
-  "comentarios": "<texto con análisis detallado>"
+  "income_tax_monthly": <number>,
+  "employee_contributions": <number>,
+  "net_employee": <number>,
+  "employer_contributions": <number>,
+  "total_cost_employer": <number>,
+  "pe_risk": "Low | Medium | High",
+  "comments": "<detailed analysis text>"
 }}
 
-IMPORTANTE: Tu respuesta debe ser únicamente el JSON, sin explicaciones adicionales ni formato markdown.
+IMPORTANT: Your response must be only the JSON, without additional explanations or markdown formatting.
 """
         return prompt
 
@@ -199,13 +199,13 @@ IMPORTANTE: Tu respuesta debe ser únicamente el JSON, sin explicaciones adicion
             # Validate and create TaxCalculation model
             try:
                 tax_calc = TaxCalculation(
-                    ganancias_monthly=response_data["ganancias_mensual"],
-                    employee_contributions=response_data["aportes_employee"],
-                    net_employee=response_data["neto_employee"],
-                    employer_contributions=response_data["aportes_employer"],
+                    income_tax_monthly=response_data["income_tax_monthly"],
+                    employee_contributions=response_data["employee_contributions"],
+                    net_employee=response_data["net_employee"],
+                    employer_contributions=response_data["employer_contributions"],
                     total_cost_employer=response_data["total_cost_employer"],
                     pe_risk=response_data["pe_risk"],
-                    comments=response_data["comentarios"],
+                    comments=response_data["comments"],
                 )
                 logger.info("Tax calculation successful")
                 return tax_calc

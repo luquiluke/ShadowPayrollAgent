@@ -69,29 +69,29 @@ class TestCalculatePERiskLevel:
 
     def test_low_risk_short_duration(self):
         """Test low risk for short assignments."""
-        assert calculate_pe_risk_level(3) == "Bajo"
-        assert calculate_pe_risk_level(1) == "Bajo"
+        assert calculate_pe_risk_level(3) == "Low"
+        assert calculate_pe_risk_level(1) == "Low"
 
     def test_medium_risk_borderline(self):
         """Test medium risk for borderline durations."""
         # 6 months = 180 days (just under threshold)
-        assert calculate_pe_risk_level(6) == "Bajo"
+        assert calculate_pe_risk_level(6) == "Low"
 
         # 7 months = 210 days (just over threshold)
-        assert calculate_pe_risk_level(7) == "Medio"
+        assert calculate_pe_risk_level(7) == "Medium"
 
     def test_high_risk_long_duration(self):
         """Test high risk for long assignments."""
-        assert calculate_pe_risk_level(12) == "Alto"
-        assert calculate_pe_risk_level(24) == "Alto"
-        assert calculate_pe_risk_level(36) == "Alto"
+        assert calculate_pe_risk_level(12) == "High"
+        assert calculate_pe_risk_level(24) == "High"
+        assert calculate_pe_risk_level(36) == "High"
 
     def test_threshold_exactly_183_days(self):
         """Test exactly at PE threshold."""
         # 183 days ÷ 30 = 6.1 months
-        assert calculate_pe_risk_level(6) == "Bajo"
+        assert calculate_pe_risk_level(6) == "Low"
         # 7 months = 210 days (over threshold)
-        assert calculate_pe_risk_level(7) == "Medio"
+        assert calculate_pe_risk_level(7) == "Medium"
 
 
 class TestValidatePositiveNumber:

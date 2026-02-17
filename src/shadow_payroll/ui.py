@@ -9,7 +9,16 @@ from typing import Optional, Tuple
 
 import streamlit as st
 
-from .config import config, set_openai_api_key
+# Inject custom legal/corporate CSS theme
+def inject_corporate_theme():
+    with open(
+        str((__import__('pathlib').Path(__file__).parent / "corporate_theme.css").resolve()), "r", encoding="utf-8"
+    ) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+inject_corporate_theme()
+
+from .config import config, set_openai_api_key, COUNTRIES, CURRENCIES
 from .models import PayrollInput, ShadowPayrollResult
 from .utils import get_cached_usd_ars_rate
 from .calculations import PayrollCalculator
@@ -26,14 +35,27 @@ def configure_page() -> None:
         layout=config.PAGE_LAYOUT,
         page_icon="💼",
     )
+    # Always apply dark theme
+    inject_dark_theme()
+
+
+def inject_dark_theme():
+    """Injects the dark theme CSS and JS into the page."""
+    st.markdown("<style id='corporate-theme'></style>", unsafe_allow_html=True)
+    st.markdown("""
+        <script>
+        document.body.classList.remove('theme-light-override', 'theme-dark-override');
+        document.body.classList.add('theme-dark-override');
+        </script>
+    """, unsafe_allow_html=True)
 
 
 def render_header() -> None:
     """Render page header and title."""
-    st.title("Shadow Payroll Calculator – Argentina 2025")
+    st.title("Shadow Payroll Calculator")
     st.caption(
-        "Herramienta informativa de shadow payroll para expatriados. "
-        "No constituye asesoramiento fiscal ni legal."
+        "Informational shadow payroll tool for expatriate assignments. "
+        "This does not constitute tax or legal advice."
     )
     st.markdown("---")
 
@@ -47,16 +69,16 @@ def get_api_key() -> Optional[str]:
     """
     if "OPENAI_API_KEY" not in st.session_state:
         with st.sidebar:
-            st.subheader("🔑 Configuración")
+            st.subheader("Configuration")
             api_key = st.text_input(
                 "OpenAI API Key",
                 type="password",
-                help="Ingrese su API key de OpenAI para habilitar los cálculos",
+                help="Enter your OpenAI API key to enable calculations",
             )
             if api_key:
                 st.session_state["OPENAI_API_KEY"] = api_key
                 set_openai_api_key(api_key)
-                st.success("API key configurada correctamente")
+                st.success("API key configured successfully")
                 st.rerun()
 
     return st.session_state.get("OPENAI_API_KEY")
@@ -64,17 +86,16 @@ def get_api_key() -> Optional[str]:
 
 def render_api_key_prompt() -> None:
     """Display prompt for API key if not configured."""
-    st.info("👈 Inserte su API Key de OpenAI en la barra lateral para comenzar.")
+    st.info("Enter your OpenAI API Key in the sidebar to get started.")
     st.markdown("""
-    ### ¿Cómo obtener una API Key?
+    ### How to get an API Key
 
-    1. Visite [OpenAI Platform](https://platform.openai.com/)
-    2. Inicie sesión o cree una cuenta
-    3. Navegue a API Keys
-    4. Genere una nueva clave
-    5. Cópiela e ingrésela en la barra lateral
+    1. Visit [OpenAI Platform](https://platform.openai.com/)
+    2. Sign in or create an account
+    3. Generate a new key
+    4. Copy and paste it in the sidebar
 
-    **Nota de seguridad:** Su API key nunca se almacena y solo se usa durante esta sesión.
+    **Security note:** Your API key is never stored and is only used during this session.
     """)
 
 
@@ -89,27 +110,27 @@ def get_fx_rate() -> Tuple[float, str, str]:
 
     if fx_data:
         st.success(
-            f"✅ Tipo de cambio automático: **{fx_data['rate']:,.2f} ARS/USD** | "
-            f"Fecha: {fx_data['date']} | Fuente: {fx_data['source']}"
+            f"Auto FX rate: **{fx_data['rate']:,.2f} ARS/USD** | "
+            f"Date: {fx_data['date']} | Source: {fx_data['source']}"
         )
         default_rate = fx_data["rate"]
         fx_date = fx_data["date"]
         fx_source = fx_data["source"]
     else:
         st.warning(
-            "⚠️ No se pudo obtener el tipo de cambio automático. "
-            "Ingrese valor manual."
+            "Could not retrieve automatic exchange rate. "
+            "Please enter a manual value."
         )
         default_rate = config.FX_DEFAULT_RATE
         fx_date = "Manual"
         fx_source = "Manual"
 
     rate = st.number_input(
-        "Tipo de cambio fiscal ARS/USD",
+        "Tax FX Rate ARS/USD",
         value=default_rate,
         min_value=1.0,
         max_value=100000.0,
-        help="Tipo de cambio a utilizar para conversión USD → ARS",
+        help="Exchange rate for USD to ARS conversion",
     )
 
     return rate, fx_date, fx_source
@@ -122,68 +143,82 @@ def render_input_form() -> Optional[PayrollInput]:
     Returns:
         Optional[PayrollInput]: Validated input data or None if invalid
     """
-    st.subheader("📋 Datos de la Asignación")
+    st.subheader("Assignment Details")
+
+    # Get FX rate
+    fx_rate, fx_date, fx_source = get_fx_rate()
+    st.session_state["fx_date"] = fx_date
+    st.session_state["fx_source"] = fx_source
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Información Salarial**")
+        st.markdown("**Employee & Assignment**")
         salary_usd = st.number_input(
-            "Salario anual home (USD)",
+            "Annual Home Salary (USD)",
             value=config.DEFAULT_SALARY_USD,
             min_value=config.MIN_SALARY,
             max_value=config.MAX_SALARY,
             step=10000.0,
-            help="Salario base anual en USD antes de impuestos",
+            help="Annual base salary in USD before taxes",
         )
 
         duration_months = st.number_input(
-            "Duración asignación (meses)",
+            "Assignment Duration (months)",
             value=config.DEFAULT_DURATION_MONTHS,
             min_value=config.MIN_DURATION,
             max_value=config.MAX_DURATION,
-            help="Duración prevista de la asignación internacional",
+            help="Expected duration of the international assignment",
+        )
+
+        home_country = st.selectbox(
+            "Home Country",
+            COUNTRIES,
+            index=COUNTRIES.index("Argentina"),
+        )
+
+        host_country = st.selectbox(
+            "Host Country",
+            COUNTRIES,
+            index=COUNTRIES.index("Argentina"),
         )
 
     with col2:
-        st.markdown("**Información Familiar y Beneficios**")
+        st.markdown("**Family & Benefits**")
         has_spouse = st.checkbox(
-            "Cónyuge a cargo",
-            help="Indica si el empleado tiene cónyuge dependiente",
+            "Dependent Spouse",
+            help="Whether the employee has a dependent spouse",
         )
 
         num_children = st.number_input(
-            "Hijos a cargo",
+            "Dependent Children",
             value=0,
-            min_value=config.MIN_DEPENDENTS,
-            max_value=config.MAX_DEPENDENTS,
-            help="Número de hijos dependientes",
+            min_value=0,
+            max_value=10,
         )
 
         housing_usd = st.number_input(
-            "Vivienda anual (USD)",
-            value=config.DEFAULT_HOUSING_USD,
-            min_value=config.MIN_BENEFIT,
-            max_value=config.MAX_BENEFIT,
-            step=5000.0,
-            help="Subsidio anual de vivienda",
+            "Annual Housing Benefit (USD)",
+            value=0.0,
+            min_value=0.0,
+            max_value=180000.0,
+            step=1000.0,
         )
 
         school_usd = st.number_input(
-            "Escuela anual (USD)",
-            value=config.DEFAULT_SCHOOL_USD,
-            min_value=config.MIN_BENEFIT,
-            max_value=config.MAX_BENEFIT,
-            step=5000.0,
-            help="Subsidio anual de educación",
+            "Annual School Benefit (USD)",
+            value=0.0,
+            min_value=0.0,
+            max_value=120000.0,
+            step=1000.0,
         )
 
-    # FX Rate section
-    st.markdown("---")
-    st.subheader("💱 Tipo de Cambio")
-    fx_rate, fx_date, fx_source = get_fx_rate()
+        display_currency = st.selectbox(
+            "Display Currency",
+            CURRENCIES,
+            index=0,
+        )
 
-    # Create and validate input model
     try:
         input_data = PayrollInput(
             salary_usd=salary_usd,
@@ -193,15 +228,13 @@ def render_input_form() -> Optional[PayrollInput]:
             housing_usd=housing_usd,
             school_usd=school_usd,
             fx_rate=fx_rate,
+            home_country=home_country,
+            host_country=host_country,
+            display_currency=display_currency,
         )
-        # Store FX metadata for later use
-        st.session_state["fx_date"] = fx_date
-        st.session_state["fx_source"] = fx_source
-
         return input_data
-
     except Exception as e:
-        st.error(f"❌ Error en validación de datos: {e}")
+        st.error(f"Input validation error: {e}")
         logger.error(f"Input validation error: {e}")
         return None
 
@@ -214,50 +247,47 @@ def render_results(result: ShadowPayrollResult) -> None:
         result: Complete shadow payroll calculation result
     """
     st.markdown("---")
-    st.subheader("📊 Resultados Shadow Payroll")
+    st.subheader("Shadow Payroll Results")
 
     # Display results in organized sections
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**💰 Montos Mensuales (ARS)**")
-        st.metric("Bruto Mensual", f"{result.base.gross_monthly_ars:,.2f}")
-        st.metric("Ganancias (4ta Cat.)", f"{result.tax.ganancias_monthly:,.2f}")
-        st.metric("Aportes Employee", f"{result.tax.employee_contributions:,.2f}")
-        st.metric("Neto Employee", f"{result.tax.net_employee:,.2f}")
+        st.markdown("**Monthly Amounts (ARS)**")
+        st.metric("Gross Monthly", f"{result.base.gross_monthly_ars:,.2f}")
+        st.metric("Income Tax (4th Cat.)", f"{result.tax.income_tax_monthly:,.2f}")
+        st.metric("Employee Contributions", f"{result.tax.employee_contributions:,.2f}")
+        st.metric("Net Employee", f"{result.tax.net_employee:,.2f}")
 
     with col2:
-        st.markdown("**🏢 Costos Employer (ARS)**")
-        st.metric("Aportes Employer", f"{result.tax.employer_contributions:,.2f}")
+        st.markdown("**Employer Costs (ARS)**")
+        st.metric("Employer Contributions", f"{result.tax.employer_contributions:,.2f}")
         st.metric(
-            "Costo Total Employer",
+            "Total Employer Cost",
             f"{result.tax.total_cost_employer:,.2f}",
-            help="Costo total mensual para el empleador",
+            help="Total monthly cost for the employer",
         )
 
         # PE Risk indicator
         risk_color = {
-            "Bajo": "🟢",
-            "Medio": "🟡",
-            "Alto": "🔴",
             "Low": "🟢",
             "Medium": "🟡",
             "High": "🔴",
         }
         st.metric(
-            "Riesgo PE",
+            "PE Risk",
             f"{risk_color.get(result.tax.pe_risk, '⚪')} {result.tax.pe_risk}",
         )
 
     # Comments section
-    st.markdown("**📝 Comentarios y Alertas Fiscales**")
+    st.markdown("**Tax Comments & Alerts**")
     st.info(result.tax.comments)
 
     # Metadata
-    with st.expander("ℹ️ Información Adicional"):
-        st.write(f"**Tipo de cambio:** {result.base.fx_rate:,.2f} ARS/USD")
-        st.write(f"**Fecha FX:** {result.fx_date}")
-        st.write(f"**Fuente FX:** {result.fx_source}")
+    with st.expander("Additional Information"):
+        st.write(f"**Exchange Rate:** {result.base.fx_rate:,.2f} ARS/USD")
+        st.write(f"**FX Date:** {result.fx_date}")
+        st.write(f"**FX Source:** {result.fx_source}")
 
 
 def render_excel_download(result: ShadowPayrollResult) -> None:
@@ -271,14 +301,14 @@ def render_excel_download(result: ShadowPayrollResult) -> None:
         excel_bytes = export_to_excel(result)
 
         st.download_button(
-            label="📊 Descargar Reporte Excel",
+            label="Download Excel Report",
             data=excel_bytes,
-            file_name="shadow_payroll_argentina_2025.xlsx",
+            file_name="shadow_payroll_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Descargue un reporte Excel con todos los resultados",
+            help="Download an Excel report with all results",
         )
     except Exception as e:
-        st.error(f"Error generando Excel: {e}")
+        st.error(f"Error generating Excel: {e}")
         logger.error(f"Excel generation error: {e}")
 
 
@@ -299,7 +329,7 @@ def run_calculation(input_data: PayrollInput, api_key: str) -> Optional[ShadowPa
         base = calculator.calculate_base(input_data)
 
         # Step 2: LLM tax calculation
-        with st.spinner("🤖 Interpretando normativa fiscal con IA..."):
+        with st.spinner("Analyzing tax regulations with AI..."):
             llm_handler = TaxLLMHandler(api_key=api_key)
             tax = llm_handler.calculate_tax(input_data, base)
 
@@ -315,11 +345,11 @@ def run_calculation(input_data: PayrollInput, api_key: str) -> Optional[ShadowPa
         return result
 
     except LLMError as e:
-        st.error(f"❌ Error en servicio LLM: {e}")
+        st.error(f"LLM service error: {e}")
         logger.error(f"LLM error: {e}")
         return None
     except Exception as e:
-        st.error(f"❌ Error inesperado en cálculo: {e}")
+        st.error(f"Unexpected calculation error: {e}")
         logger.exception("Unexpected calculation error")
         return None
 
@@ -328,25 +358,24 @@ def render_sidebar_info() -> None:
     """Render informational sidebar content."""
     with st.sidebar:
         st.markdown("---")
-        st.markdown("### ℹ️ Acerca de")
+        st.markdown("### About")
         st.markdown("""
-        Esta herramienta calcula estimaciones de shadow payroll
-        para asignaciones internacionales a Argentina.
+        This tool calculates shadow payroll estimates
+        for international assignments.
 
-        **Incluye:**
-        - Cálculo de Impuesto a las Ganancias
-        - Aportes y contribuciones sociales
-        - Evaluación de riesgo PE
-        - Alertas de compliance
+        **Includes:**
+        - Income tax calculation
+        - Social security contributions
+        - PE risk assessment
+        - Compliance alerts
 
-        **Versión:** 2.0
-        **Año fiscal:** 2025
+        **Version:** 2.0
         """)
 
         st.markdown("---")
-        st.markdown("### ⚠️ Disclaimer")
+        st.markdown("### Disclaimer")
         st.markdown("""
-        Esta herramienta es solo informativa.
-        No reemplaza asesoramiento profesional.
-        Consulte con especialistas tributarios.
+        This tool is for informational purposes only.
+        It does not replace professional advice.
+        Consult with tax specialists.
         """)

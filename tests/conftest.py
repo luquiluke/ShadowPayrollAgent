@@ -35,12 +35,12 @@ def sample_base_calculation():
 def sample_tax_calculation():
     """Fixture providing sample TaxCalculation for tests."""
     return TaxCalculation(
-        ganancias_monthly=500000.0,
+        income_tax_monthly=500000.0,
         employee_contributions=1_912_500.0,
         net_employee=8_837_500.0,
         employer_contributions=2_700_000.0,
         total_cost_employer=13_950_000.0,
-        pe_risk="Alto",
+        pe_risk="High",
         comments="Long-term assignment exceeds 183 days. High PE risk.",
     )
 

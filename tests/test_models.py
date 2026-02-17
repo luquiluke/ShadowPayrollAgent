@@ -39,6 +39,9 @@ class TestPayrollInput:
 
         assert input_data.has_spouse is False
         assert input_data.num_children == 0
+        assert input_data.home_country == "Argentina"
+        assert input_data.host_country == "Argentina"
+        assert input_data.display_currency == "USD"
 
     def test_negative_salary_rejected(self):
         """Test negative salary is rejected."""
@@ -83,6 +86,16 @@ class TestPayrollInput:
         input_data = PayrollInput(duration_months=12, fx_rate=1000.0)
 
         assert input_data.get_duration_in_days() == 360
+
+    def test_invalid_country_rejected(self):
+        """Test invalid country is rejected."""
+        with pytest.raises(ValidationError):
+            PayrollInput(fx_rate=1000.0, home_country="Narnia")
+
+    def test_invalid_currency_rejected(self):
+        """Test invalid currency is rejected."""
+        with pytest.raises(ValidationError):
+            PayrollInput(fx_rate=1000.0, display_currency="XYZ")
 
 
 class TestBaseCalculation:
@@ -129,27 +142,27 @@ class TestTaxCalculation:
     def test_valid_tax_calculation(self):
         """Test creating valid TaxCalculation."""
         tax = TaxCalculation(
-            ganancias_monthly=500000.0,
+            income_tax_monthly=500000.0,
             employee_contributions=1_700_000.0,
             net_employee=8_000_000.0,
             employer_contributions=2_400_000.0,
             total_cost_employer=14_400_000.0,
-            pe_risk="Medio",
+            pe_risk="Medium",
             comments="Test comments",
         )
 
-        assert tax.pe_risk == "Medio"
+        assert tax.pe_risk == "Medium"
 
-    def test_negative_ganancias_rejected(self):
+    def test_negative_income_tax_rejected(self):
         """Test negative tax amount is rejected."""
         with pytest.raises(ValidationError):
             TaxCalculation(
-                ganancias_monthly=-500000.0,
+                income_tax_monthly=-500000.0,
                 employee_contributions=1_700_000.0,
                 net_employee=8_000_000.0,
                 employer_contributions=2_400_000.0,
                 total_cost_employer=14_400_000.0,
-                pe_risk="Bajo",
+                pe_risk="Low",
                 comments="Test",
             )
 
@@ -157,7 +170,7 @@ class TestTaxCalculation:
         """Test invalid PE risk level is rejected."""
         with pytest.raises(ValidationError, match="PE risk must be one of"):
             TaxCalculation(
-                ganancias_monthly=500000.0,
+                income_tax_monthly=500000.0,
                 employee_contributions=1_700_000.0,
                 net_employee=8_000_000.0,
                 employer_contributions=2_400_000.0,
@@ -169,7 +182,7 @@ class TestTaxCalculation:
     def test_english_pe_risk_accepted(self):
         """Test English PE risk levels are accepted."""
         tax = TaxCalculation(
-            ganancias_monthly=500000.0,
+            income_tax_monthly=500000.0,
             employee_contributions=1_700_000.0,
             net_employee=8_000_000.0,
             employer_contributions=2_400_000.0,
@@ -194,12 +207,12 @@ class TestShadowPayrollResult:
         )
 
         tax = TaxCalculation(
-            ganancias_monthly=500000.0,
+            income_tax_monthly=500000.0,
             employee_contributions=1_700_000.0,
             net_employee=8_000_000.0,
             employer_contributions=2_400_000.0,
             total_cost_employer=14_400_000.0,
-            pe_risk="Bajo",
+            pe_risk="Low",
             comments="All good",
         )
 
@@ -220,12 +233,12 @@ class TestShadowPayrollResult:
         )
 
         tax = TaxCalculation(
-            ganancias_monthly=500000.0,
+            income_tax_monthly=500000.0,
             employee_contributions=1_700_000.0,
             net_employee=8_000_000.0,
             employer_contributions=2_400_000.0,
             total_cost_employer=14_400_000.0,
-            pe_risk="Bajo",
+            pe_risk="Low",
             comments="All good",
         )
 
@@ -235,10 +248,10 @@ class TestShadowPayrollResult:
 
         display_dict = result.to_display_dict()
 
-        assert "Bruto mensual ARS" in display_dict
-        assert "Ganancias mensual estimado" in display_dict
-        assert display_dict["Tipo de cambio"] == 1000.0
-        assert display_dict["Fuente FX"] == "Test"
+        assert "Gross Monthly (ARS)" in display_dict
+        assert "Income Tax Monthly (est.)" in display_dict
+        assert display_dict["Exchange Rate"] == 1000.0
+        assert display_dict["FX Source"] == "Test"
 
 
 class TestFXRateData:

@@ -8,7 +8,7 @@ with comprehensive validation rules.
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
-from .config import config
+from .config import config, COUNTRIES, CURRENCIES
 
 
 class PayrollInput(BaseModel):
@@ -18,7 +18,7 @@ class PayrollInput(BaseModel):
     Validates all user inputs according to business rules.
     """
 
-    model_config = ConfigDict(frozen=False, validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True)
 
     salary_usd: float = Field(
         default=config.DEFAULT_SALARY_USD,
@@ -49,20 +49,35 @@ class PayrollInput(BaseModel):
     housing_usd: float = Field(
         default=config.DEFAULT_HOUSING_USD,
         ge=config.MIN_BENEFIT,
-        le=config.MAX_BENEFIT,
+        le=config.MAX_HOUSING_USD,
         description="Annual housing benefit in USD",
     )
 
     school_usd: float = Field(
         default=config.DEFAULT_SCHOOL_USD,
         ge=config.MIN_BENEFIT,
-        le=config.MAX_BENEFIT,
+        le=config.MAX_SCHOOL_USD,
         description="Annual school benefit in USD",
     )
 
     fx_rate: float = Field(
         gt=0.0,
         description="USD to ARS exchange rate",
+    )
+
+    home_country: str = Field(
+        default="Argentina",
+        description="Employee home country",
+    )
+
+    host_country: str = Field(
+        default="Argentina",
+        description="Host/assignment country",
+    )
+
+    display_currency: str = Field(
+        default="USD",
+        description="Preferred display currency",
     )
 
     @field_validator("salary_usd", "housing_usd", "school_usd")
@@ -83,6 +98,22 @@ class PayrollInput(BaseModel):
             raise ValueError("ARS/USD rate seems too low (expected > 1)")
         if v > 100000:
             raise ValueError("ARS/USD rate seems unreasonably high")
+        return v
+
+    @field_validator("home_country", "host_country")
+    @classmethod
+    def validate_country(cls, v: str) -> str:
+        """Ensure country is in the supported list."""
+        if v not in COUNTRIES:
+            raise ValueError(f"Country must be one of {COUNTRIES}, got {v}")
+        return v
+
+    @field_validator("display_currency")
+    @classmethod
+    def validate_display_currency(cls, v: str) -> str:
+        """Ensure currency is in the supported list."""
+        if v not in CURRENCIES:
+            raise ValueError(f"Currency must be one of {CURRENCIES}, got {v}")
         return v
 
     def get_total_benefits_usd(self) -> float:
@@ -133,9 +164,9 @@ class TaxCalculation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    ganancias_monthly: float = Field(
+    income_tax_monthly: float = Field(
         ge=0.0,
-        description="Monthly Ganancias tax (income tax)",
+        description="Monthly income tax estimate",
     )
 
     employee_contributions: float = Field(
@@ -170,7 +201,7 @@ class TaxCalculation(BaseModel):
     @classmethod
     def validate_pe_risk(cls, v: str) -> str:
         """Validate PE risk is one of expected values."""
-        valid_levels = ["Bajo", "Medio", "Alto", "Low", "Medium", "High"]
+        valid_levels = ["Low", "Medium", "High"]
         if v not in valid_levels:
             raise ValueError(f"PE risk must be one of {valid_levels}, got {v}")
         return v
@@ -198,17 +229,17 @@ class ShadowPayrollResult(BaseModel):
             dict: Formatted results for UI display
         """
         return {
-            "Bruto mensual ARS": self.base.gross_monthly_ars,
-            "Ganancias mensual estimado": self.tax.ganancias_monthly,
-            "Aportes employee": self.tax.employee_contributions,
-            "Neto employee": self.tax.net_employee,
-            "Aportes employer": self.tax.employer_contributions,
-            "Costo total employer": self.tax.total_cost_employer,
-            "Riesgo PE": self.tax.pe_risk,
-            "Comentarios": self.tax.comments,
-            "Tipo de cambio": self.base.fx_rate,
-            "Fecha FX": self.fx_date,
-            "Fuente FX": self.fx_source,
+            "Gross Monthly (ARS)": self.base.gross_monthly_ars,
+            "Income Tax Monthly (est.)": self.tax.income_tax_monthly,
+            "Employee Contributions": self.tax.employee_contributions,
+            "Net Employee": self.tax.net_employee,
+            "Employer Contributions": self.tax.employer_contributions,
+            "Total Employer Cost": self.tax.total_cost_employer,
+            "PE Risk": self.tax.pe_risk,
+            "Comments": self.tax.comments,
+            "Exchange Rate": self.base.fx_rate,
+            "FX Date": self.fx_date,
+            "FX Source": self.fx_source,
         }
 
 

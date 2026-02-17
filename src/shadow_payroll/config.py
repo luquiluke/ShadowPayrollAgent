@@ -44,6 +44,8 @@ class AppConfig:
     MAX_DEPENDENTS: int = 10
     MIN_BENEFIT: float = 0.0
     MAX_BENEFIT: float = 1_000_000.0
+    MAX_HOUSING_USD: float = 180_000.0  # $15k/month * 12
+    MAX_SCHOOL_USD: float = 120_000.0  # $10k/month * 12
 
     # Argentina Tax Constants (2025)
     EMPLOYEE_CONTRIBUTION_RATE: float = 0.17  # ~17%
@@ -96,3 +98,53 @@ def set_openai_api_key(api_key: str) -> None:
 
 # Global configuration instance
 config = AppConfig.from_env()
+
+# Country list for expat assignments (curated common destinations)
+COUNTRIES: list[str] = [
+    "Argentina",
+    "Australia",
+    "Brazil",
+    "Canada",
+    "Chile",
+    "China",
+    "Colombia",
+    "France",
+    "Germany",
+    "India",
+    "Ireland",
+    "Italy",
+    "Japan",
+    "Mexico",
+    "Netherlands",
+    "New Zealand",
+    "Peru",
+    "Philippines",
+    "Poland",
+    "Portugal",
+    "Singapore",
+    "South Korea",
+    "Spain",
+    "Sweden",
+    "Switzerland",
+    "United Arab Emirates",
+    "United Kingdom",
+    "United States",
+    "Uruguay",
+    "Other",
+]
+
+# Supported display currencies
+CURRENCIES: list[str] = [
+    "USD",
+    "EUR",
+    "GBP",
+    "ARS",
+    "BRL",
+    "CAD",
+    "CHF",
+    "CNY",
+    "JPY",
+    "MXN",
+    "SGD",
+    "AUD",
+]

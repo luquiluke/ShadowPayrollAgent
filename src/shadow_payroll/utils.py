@@ -155,22 +155,22 @@ def calculate_pe_risk_level(duration_months: int) -> str:
         duration_months: Assignment duration in months
 
     Returns:
-        str: Risk level - "Bajo" (Low), "Medio" (Medium), or "Alto" (High)
+        str: Risk level - "Low", "Medium", or "High"
 
     Example:
         >>> calculate_pe_risk_level(3)
-        'Bajo'
+        'Low'
         >>> calculate_pe_risk_level(12)
-        'Alto'
+        'High'
     """
     days = duration_months * 30  # Approximate conversion
 
     if days < config.PE_RISK_THRESHOLD_DAYS:
-        return "Bajo"
+        return "Low"
     elif days < config.PE_RISK_THRESHOLD_DAYS + 90:  # 183-273 days
-        return "Medio"
+        return "Medium"
     else:
-        return "Alto"
+        return "High"
 
 
 def validate_positive_number(value: float, field_name: str) -> None:

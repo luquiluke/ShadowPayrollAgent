@@ -2,14 +2,21 @@
 Unit tests for utility functions.
 """
 
+import json
+
 import pytest
+from unittest.mock import patch, MagicMock
+
 from shadow_payroll.utils import (
     clean_llm_json_response,
     format_currency_ars,
     calculate_pe_risk_level,
     validate_positive_number,
     safe_divide,
+    get_usd_ars_rate,
+    FXRateError,
 )
+from shadow_payroll.config import get_openai_api_key, set_openai_api_key
 
 
 class TestCleanLLMJsonResponse:
@@ -144,3 +151,177 @@ class TestSafeDivide:
     def test_decimal_result(self):
         """Test division resulting in decimal."""
         assert safe_divide(10.0, 3.0) == pytest.approx(3.333333, rel=1e-5)
+
+
+class TestCalculatePERiskLevelEnglish:
+    """Additional PE risk tests confirming English-only return values."""
+
+    def test_returns_low_for_short(self):
+        assert calculate_pe_risk_level(3) == "Low"
+
+    def test_returns_medium_for_borderline(self):
+        assert calculate_pe_risk_level(7) == "Medium"
+
+    def test_returns_high_for_long(self):
+        assert calculate_pe_risk_level(12) == "High"
+
+    def test_never_returns_spanish(self):
+        """Ensure no Spanish values returned for any duration."""
+        for months in range(1, 60):
+            result = calculate_pe_risk_level(months)
+            assert result in ("Low", "Medium", "High"), f"Unexpected: {result}"
+            assert result not in ("Bajo", "Medio", "Alto"), f"Spanish found: {result}"
+
+
+class TestGetUsdArsRate:
+    """Test suite for get_usd_ars_rate with mocked HTTP."""
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_successful_api_response(self, mock_get):
+        """Test successful FX rate fetch from API."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": "success",
+            "rates": {"ARS": 1050.75},
+            "time_last_update_utc": "Mon, 20 Jan 2025 00:00:01 +0000",
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = get_usd_ars_rate()
+        assert result is not None
+        assert result["rate"] == 1050.75
+        assert result["source"] == "open.er-api.com"
+        assert "date" in result
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_failed_api_returns_none(self, mock_get):
+        """Test failed API call returns None."""
+        mock_get.side_effect = Exception("Connection refused")
+
+        result = get_usd_ars_rate()
+        assert result is None
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_api_non_success_result_returns_none(self, mock_get):
+        """Test non-success API result returns None."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": "error"}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = get_usd_ars_rate()
+        assert result is None
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_api_missing_ars_rate_returns_none(self, mock_get):
+        """Test API response without ARS rate returns None."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": "success",
+            "rates": {"EUR": 0.85},
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = get_usd_ars_rate()
+        assert result is None
+
+
+class TestCleanLLMJsonResponseExtended:
+    """Additional edge cases for clean_llm_json_response."""
+
+    def test_nested_json_in_fences(self):
+        """Test nested JSON inside markdown fences."""
+        raw = '```json\n{"a": {"b": [1, 2, 3]}}\n```'
+        cleaned = clean_llm_json_response(raw)
+        parsed = json.loads(cleaned)
+        assert parsed["a"]["b"] == [1, 2, 3]
+
+    def test_multiple_backtick_blocks(self):
+        """Test cleaning with only opening/closing backticks."""
+        raw = '```\n{"key": "value"}\n```'
+        cleaned = clean_llm_json_response(raw)
+        assert json.loads(cleaned) == {"key": "value"}
+
+    def test_empty_string(self):
+        """Test cleaning empty string."""
+        cleaned = clean_llm_json_response("")
+        assert cleaned == ""
+
+    def test_plain_text_not_json(self):
+        """Test cleaning plain text that isn't JSON."""
+        raw = "This is just text"
+        cleaned = clean_llm_json_response(raw)
+        assert cleaned == "This is just text"
+
+
+class TestFormatCurrencyARSExtended:
+    """Additional format_currency_ars tests."""
+
+    def test_small_amount(self):
+        """Test formatting small amount."""
+        result = format_currency_ars(0.01)
+        assert result == "ARS 0.01"
+
+    def test_exact_integer(self):
+        """Test formatting exact integer amount."""
+        result = format_currency_ars(1000.0)
+        assert result == "ARS 1,000.00"
+
+
+class TestFXRateError:
+    """Test FXRateError custom exception."""
+
+    def test_fx_rate_error_is_exception(self):
+        """Test FXRateError is a proper exception."""
+        with pytest.raises(FXRateError):
+            raise FXRateError("Rate unavailable")
+
+    def test_fx_rate_error_message(self):
+        """Test FXRateError carries message."""
+        err = FXRateError("test message")
+        assert str(err) == "test message"
+
+
+class TestGetUsdArsRateEdgeCases:
+    """Edge cases for FX rate fetching."""
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_http_timeout_returns_none(self, mock_get):
+        """Test HTTP timeout returns None."""
+        import requests
+
+        mock_get.side_effect = requests.Timeout("Request timed out")
+        result = get_usd_ars_rate()
+        assert result is None
+
+    @patch("shadow_payroll.utils.requests.get")
+    def test_invalid_json_returns_none(self, mock_get):
+        """Test invalid JSON response returns None."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.side_effect = json.JSONDecodeError("err", "doc", 0)
+        mock_get.return_value = mock_response
+
+        result = get_usd_ars_rate()
+        assert result is None
+
+
+class TestConfigHelpers:
+    """Test config helper functions."""
+
+    def test_set_and_get_openai_api_key(self):
+        """Test setting and retrieving API key via environment."""
+        import os
+
+        original = os.environ.get("OPENAI_API_KEY")
+        try:
+            set_openai_api_key("sk-test-12345")
+            assert get_openai_api_key() == "sk-test-12345"
+        finally:
+            if original is not None:
+                os.environ["OPENAI_API_KEY"] = original
+            else:
+                os.environ.pop("OPENAI_API_KEY", None)

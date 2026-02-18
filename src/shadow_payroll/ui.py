@@ -497,12 +497,15 @@ def render_cost_rating(result: EstimationResponse) -> None:
     # Overall rating badge
     rating = result.overall_rating
     color = _RATING_COLORS.get(rating.level, "#aaa")
+    low = f"USD {rating.typical_range_low_usd:,.0f}"
+    high = f"USD {rating.typical_range_high_usd:,.0f}"
     st.markdown(
+        f'<p style="font-size:1em; line-height:1.6;">'
         f'<span style="display:inline-block; width:12px; height:12px; '
-        f'border-radius:50%; background:{color}; margin-right:6px;"></span>'
-        f'<strong style="font-size:1.1em;">{rating.level}</strong> '
-        f'<span style="color:#aaa;"> &mdash; Typical range for {rating.region_name}: '
-        f'${rating.typical_range_low_usd:,.0f}&ndash;${rating.typical_range_high_usd:,.0f}</span>',
+        f'border-radius:50%; background:{color}; margin-right:6px; vertical-align:middle;"></span>'
+        f'<strong>{rating.level}</strong>'
+        f'<span style="color:#aaa;"> \u2014 Typical range for {rating.region_name}: '
+        f'{low}\u2013{high}</span></p>',
         unsafe_allow_html=True,
     )
 

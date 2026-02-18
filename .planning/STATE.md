@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Help HR teams and expats answer "Is this assignment worth the cost?" with AI-powered shadow payroll estimates for any country, rated against industry benchmarks.
-**Current focus:** Phase 1 - Foundation Fixes
+**Current focus:** Phase 2 - Multi-Country Estimation
 
 ## Current Position
 
-Phase: 1 of 3 (Foundation Fixes) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans complete)
-Status: Phase Complete
-Last activity: 2026-02-17 -- Completed 01-02 (FX sidebar + test coverage)
+Phase: 2 of 3 (Multi-Country Estimation)
+Plan: 1 of 2 in current phase (02-01 complete)
+Status: In Progress
+Last activity: 2026-02-18 -- Completed 02-01 (estimation engine backend)
 
-Progress: [███░░░░░░░] 33%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 5.5 min
-- Total execution time: 0.18 hours
+- Total plans completed: 3
+- Average duration: 4.7 min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-fixes | 2 | 11 min | 5.5 min |
+| 02-multi-country-estimation | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (6 min)
-- Trend: stable
+- Last 5 plans: 01-01 (5 min), 01-02 (6 min), 02-01 (3 min)
+- Trend: accelerating
 
 *Updated after each plan completion*
 
@@ -52,6 +53,9 @@ Recent decisions affecting current work:
 - [01-02]: FX sidebar as persistent widget with session state as single source of truth
 - [01-02]: AppTest integration with graceful skip for CI compatibility
 - [01-02]: 90%+ coverage target for non-UI modules; ui.py covered by AppTest
+- [Phase 02]: strict=False for with_structured_output to support Optional fields
+- [Phase 02]: Dict serialization for Streamlit cache compatibility with Pydantic models
+- [Phase 02]: Removed fx_rate < 1.0 check to support all currency pairs
 
 ### Pending Todos
 
@@ -64,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-17
-Stopped at: Completed 01-02-PLAN.md (Phase 01 complete)
+Last session: 2026-02-18
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

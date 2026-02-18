@@ -85,6 +85,57 @@ def get_usd_ars_rate() -> Optional[Dict[str, Any]]:
 
 
 @st.cache_data(ttl=config.FX_CACHE_TTL)
+def get_fx_rates(base_currency: str = "USD") -> Optional[Dict[str, Any]]:
+    """
+    Fetch exchange rates for all currencies from a given base.
+
+    Uses open.er-api.com (free, no API key required).
+    Cache is keyed by base_currency, so different currencies get separate cache entries.
+
+    Args:
+        base_currency: ISO 4217 currency code to use as base (default: "USD")
+
+    Returns:
+        Optional[Dict[str, Any]]: Dictionary containing:
+            - rates (dict): All available exchange rates
+            - date (str): Last update timestamp
+            - source (str): Data source name
+        Returns None if request fails.
+    """
+    url = f"https://open.er-api.com/v6/latest/{base_currency}"
+    try:
+        logger.info(f"Fetching FX rates from {url}")
+        response = requests.get(url, timeout=config.FX_API_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("result") == "success":
+            rate_data = {
+                "rates": data["rates"],
+                "date": data.get("time_last_update_utc", ""),
+                "source": "open.er-api.com",
+            }
+            logger.info(
+                f"Successfully fetched FX rates for {base_currency} "
+                f"({len(data['rates'])} currencies)"
+            )
+            return rate_data
+
+        logger.error(f"FX API returned non-success result: {data.get('result')}")
+        return None
+
+    except requests.RequestException as e:
+        logger.error(f"HTTP request failed for FX rates ({base_currency}): {e}")
+        return None
+    except (KeyError, ValueError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to parse FX rate response ({base_currency}): {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error fetching FX rates ({base_currency}): {e}")
+        return None
+
+
+@st.cache_data(ttl=config.FX_CACHE_TTL)
 def get_cached_usd_ars_rate() -> Optional[Dict[str, Any]]:
     """
     Cached version of get_usd_ars_rate.

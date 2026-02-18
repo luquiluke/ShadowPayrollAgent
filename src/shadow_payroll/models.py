@@ -62,7 +62,7 @@ class PayrollInput(BaseModel):
 
     fx_rate: float = Field(
         gt=0.0,
-        description="USD to ARS exchange rate",
+        description="USD to host country currency exchange rate",
     )
 
     home_country: str = Field(
@@ -93,11 +93,9 @@ class PayrollInput(BaseModel):
     def validate_fx_rate(cls, v: float) -> float:
         """Ensure FX rate is reasonable."""
         if v <= 0:
-            raise ValueError("FX rate must be positive")
-        if v < 1.0:
-            raise ValueError("ARS/USD rate seems too low (expected > 1)")
+            raise ValueError("Exchange rate must be positive")
         if v > 100000:
-            raise ValueError("ARS/USD rate seems unreasonably high")
+            raise ValueError("Exchange rate seems unreasonably high")
         return v
 
     @field_validator("home_country", "host_country")
@@ -251,3 +249,120 @@ class FXRateData(BaseModel):
     rate: float = Field(gt=0.0, description="Exchange rate value")
     date: str = Field(description="Last update timestamp")
     source: str = Field(description="Data source name")
+
+
+# --- Multi-country estimation response models ---
+
+
+class CostLineItem(BaseModel):
+    """Single cost component in the breakdown."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str = Field(description="Cost item name, e.g. 'Income Tax', 'Employer Social Security'")
+    amount_usd: float = Field(description="Annual amount in USD")
+    amount_local: float = Field(description="Annual amount in host country local currency")
+    local_currency: str = Field(description="ISO 4217 currency code for local amount, e.g. 'EUR'")
+    is_range: bool = Field(
+        description="True if this is an estimate range rather than a specific amount"
+    )
+    range_low_usd: Optional[float] = Field(
+        default=None, description="Low end of range in USD if is_range is True"
+    )
+    range_high_usd: Optional[float] = Field(
+        default=None, description="High end of range in USD if is_range is True"
+    )
+    range_disclaimer: Optional[str] = Field(
+        default=None, description="Explanation for why a range is shown instead of specific amount"
+    )
+
+
+class CostRating(BaseModel):
+    """Cost rating against regional benchmarks."""
+
+    model_config = ConfigDict(frozen=True)
+
+    level: str = Field(description="One of 'Low', 'Medium', 'High'")
+    region_name: str = Field(description="Region name, e.g. 'Western Europe'")
+    typical_range_low_usd: float = Field(
+        description="Low end of typical range for this region in USD"
+    )
+    typical_range_high_usd: float = Field(
+        description="High end of typical range for this region in USD"
+    )
+
+
+class ItemRating(BaseModel):
+    """Rating for a specific cost item."""
+
+    model_config = ConfigDict(frozen=True)
+
+    item_label: str = Field(description="Which line item this rating applies to")
+    level: str = Field(description="One of 'Low', 'Medium', 'High'")
+    context: str = Field(description="Brief context like 'Above average for Western Europe'")
+
+
+class PERiskAssessment(BaseModel):
+    """Permanent Establishment risk assessment."""
+
+    model_config = ConfigDict(frozen=True)
+
+    risk_level: str = Field(description="One of 'Low', 'Medium', 'High'")
+    pe_threshold_days: int = Field(description="PE day threshold for this country pair")
+    assignment_duration_days: int = Field(description="Assignment duration in days")
+    exceeds_threshold: bool = Field(description="Whether assignment exceeds PE threshold")
+    treaty_exists: bool = Field(
+        description="Whether a tax treaty exists between the two countries"
+    )
+    treaty_name: Optional[str] = Field(
+        default=None, description="Name of the tax treaty if it exists"
+    )
+    treaty_implications: Optional[str] = Field(
+        default=None, description="How the treaty affects PE risk"
+    )
+    no_treaty_warning: Optional[str] = Field(
+        default=None, description="Warning text if no treaty exists"
+    )
+    mitigation_suggestions: list[str] = Field(
+        description="1-2 actionable suggestions to mitigate PE risk"
+    )
+    economic_employer_note: Optional[str] = Field(
+        default=None,
+        description="Note about economic vs legal employer if relevant",
+    )
+
+
+class EstimationResponse(BaseModel):
+    """Complete multi-country shadow payroll estimation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # Cost breakdown
+    line_items: list[CostLineItem] = Field(description="Itemized cost breakdown")
+    total_employer_cost_usd: float = Field(
+        description="Total annual employer cost in USD"
+    )
+    total_employer_cost_local: float = Field(
+        description="Total annual employer cost in local currency"
+    )
+    local_currency: str = Field(
+        description="ISO 4217 currency code for the host country"
+    )
+
+    # Cost rating
+    overall_rating: CostRating = Field(
+        description="Overall cost rating against regional benchmarks"
+    )
+    item_ratings: list[ItemRating] = Field(
+        description="Ratings for key items: income tax and social security"
+    )
+
+    # PE risk
+    pe_risk: PERiskAssessment = Field(
+        description="Permanent Establishment risk assessment"
+    )
+
+    # AI insights
+    insights_paragraph: str = Field(
+        description="2-3 sentence narrative analysis of cost drivers and optimization opportunities, written as expert advice"
+    )

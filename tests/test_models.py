@@ -63,10 +63,10 @@ class TestPayrollInput:
         with pytest.raises(ValidationError):
             PayrollInput(fx_rate=-100.0)
 
-    def test_unreasonably_low_fx_rate_rejected(self):
-        """Test unreasonably low FX rate is rejected."""
-        with pytest.raises(ValidationError, match="rate seems too low"):
-            PayrollInput(fx_rate=0.5)
+    def test_sub_one_fx_rate_accepted(self):
+        """Test FX rates below 1.0 are accepted (e.g., EUR/USD = 0.92)."""
+        model = PayrollInput(fx_rate=0.92)
+        assert model.fx_rate == 0.92
 
     def test_unreasonably_high_fx_rate_rejected(self):
         """Test unreasonably high FX rate is rejected."""

@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 2 of 3 (Multi-Country Estimation)
-Plan: 1 of 2 in current phase (02-01 complete)
-Status: In Progress
-Last activity: 2026-02-18 -- Completed 02-01 (estimation engine backend)
+Plan: 2 of 2 in current phase (02-02 complete -- phase DONE)
+Status: Phase 2 Complete
+Last activity: 2026-02-18 -- Completed 02-02 (estimation results UI and app wiring)
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 4.7 min
-- Total execution time: 0.23 hours
+- Total plans completed: 4
+- Average duration: 5.5 min
+- Total execution time: 0.37 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-fixes | 2 | 11 min | 5.5 min |
-| 02-multi-country-estimation | 1 | 3 min | 3 min |
+| 02-multi-country-estimation | 2 | 13 min | 6.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (6 min), 02-01 (3 min)
-- Trend: accelerating
+- Last 5 plans: 01-01 (5 min), 01-02 (6 min), 02-01 (3 min), 02-02 (10 min)
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -56,6 +56,9 @@ Recent decisions affecting current work:
 - [Phase 02]: strict=False for with_structured_output to support Optional fields
 - [Phase 02]: Dict serialization for Streamlit cache compatibility with Pydantic models
 - [Phase 02]: Removed fx_rate < 1.0 check to support all currency pairs
+- [02-02]: Unicode escape sequences (\u2013, \u2014) not HTML entities in st.markdown -- Streamlit does not parse HTML entities
+- [02-02]: Explicit USD prefix on benchmark range for unambiguous dual-currency display
+- [02-02]: CSS diagonal stripe removed from corporate_theme.css -- cosmetic; Phase 3 handles full CSS polish
 
 ### Pending Todos
 
@@ -69,5 +72,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed 02-01-PLAN.md
+Stopped at: Completed 02-02-PLAN.md (Phase 2 complete)
 Resume file: None

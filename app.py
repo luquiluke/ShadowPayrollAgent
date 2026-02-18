@@ -25,6 +25,8 @@ from shadow_payroll.ui import (
     render_results,
     render_excel_download,
     run_calculation,
+    run_estimation,
+    render_estimation_results,
     render_sidebar_info,
 )
 from shadow_payroll.config import config
@@ -63,30 +65,35 @@ def main():
     st.session_state.setdefault("fx_source", "Default")
     st.session_state.setdefault("fx_stale", True)
 
-    # Render FX sidebar (populates session state with FX data)
-    render_fx_sidebar()
-
     # Render sidebar
     render_sidebar_info()
 
-    # Render input form
+    # Render input form (populates host_country in session state)
     input_data = render_input_form()
 
     if not input_data:
         logger.warning("Invalid input data")
         return
 
+    # Store host_country in session state so FX sidebar can react
+    st.session_state["host_country"] = input_data.host_country
+    st.session_state["home_country"] = input_data.home_country
+
+    # Render FX sidebar AFTER host_country is known
+    render_fx_sidebar()
+
     # Calculate button
     if st.button("Calculate Shadow Payroll", type="primary", use_container_width=True):
-        logger.info("Calculation triggered")
+        logger.info("Estimation triggered")
 
-        result = run_calculation(input_data, api_key)
+        result = run_estimation(input_data, api_key)
 
         if result:
-            render_results(result)
-            render_excel_download(result)
+            model_name = st.session_state.get("estimation_model_name", config.LLM_MODEL)
+            timestamp = st.session_state.get("estimation_timestamp", "Unknown")
+            render_estimation_results(result, model_name, timestamp)
         else:
-            logger.error("Calculation failed")
+            logger.error("Estimation failed")
 
 
 if __name__ == "__main__":

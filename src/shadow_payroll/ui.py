@@ -5,6 +5,7 @@ This module contains all UI-related functions and page rendering logic.
 """
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 import streamlit as st
@@ -18,11 +19,12 @@ def inject_corporate_theme():
 
 inject_corporate_theme()
 
-from .config import config, set_openai_api_key, COUNTRIES, CURRENCIES
-from .models import PayrollInput, ShadowPayrollResult
-from .utils import get_cached_usd_ars_rate
+from .config import config, set_openai_api_key, COUNTRIES, CURRENCIES, COUNTRY_CURRENCIES, COUNTRY_REGIONS
+from .models import PayrollInput, ShadowPayrollResult, EstimationResponse, CostLineItem, PERiskAssessment
+from .utils import get_cached_usd_ars_rate, get_fx_rates
 from .calculations import PayrollCalculator
 from .llm_handler import TaxLLMHandler, LLMError
+from .estimator import CountryEstimator, EstimationError
 from .excel_exporter import export_to_excel
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,9 @@ def render_fx_sidebar() -> None:
     Fetches the live exchange rate, displays it with metadata,
     and provides a manual override option. Populates session state
     with fx_rate, fx_date, fx_source, and fx_stale.
+
+    Also fetches and displays the host country currency rate when
+    a non-Argentina host country is selected.
     """
     with st.sidebar:
         st.subheader("Exchange Rate")
@@ -141,6 +146,24 @@ def render_fx_sidebar() -> None:
             st.session_state["fx_rate"] = override
             st.session_state["fx_source"] = "Manual"
             st.session_state["fx_date"] = "Manual entry"
+
+        # Host country currency rate
+        host_country = st.session_state.get("host_country")
+        if host_country and host_country != "Argentina":
+            host_currency = COUNTRY_CURRENCIES.get(host_country, "USD")
+            if host_currency != "USD":
+                all_rates = get_fx_rates("USD")
+                if all_rates and host_currency in all_rates.get("rates", {}):
+                    host_rate = all_rates["rates"][host_currency]
+                    st.session_state["fx_rate_host"] = host_rate
+                    st.info(
+                        f"**{host_rate:,.2f} {host_currency}/USD**\n\n"
+                        f"Host country: {host_country}"
+                    )
+                else:
+                    st.session_state["fx_rate_host"] = 1.0
+            else:
+                st.session_state["fx_rate_host"] = 1.0
 
 
 def render_input_form() -> Optional[PayrollInput]:
@@ -386,3 +409,288 @@ def render_sidebar_info() -> None:
         It does not replace professional advice.
         Consult with tax specialists.
         """)
+
+
+# --- Multi-country estimation UI functions ---
+
+_RATING_COLORS = {
+    "Low": "#2ecc71",
+    "Medium": "#f39c12",
+    "High": "#e74c3c",
+}
+
+
+def render_estimation_results(
+    result: EstimationResponse, model_name: str, timestamp: str
+) -> None:
+    """
+    Main results page orchestrator for multi-country estimation.
+
+    Calls sub-functions in order: cost breakdown, cost rating,
+    AI insights, PE risk section, and footer disclaimer.
+
+    Args:
+        result: Validated estimation response from the LLM.
+        model_name: LLM model name for metadata display.
+        timestamp: Generation timestamp for metadata display.
+    """
+    st.markdown("---")
+    render_cost_breakdown(result)
+    render_cost_rating(result)
+    render_insights(result)
+    render_pe_risk_section(result)
+    render_disclaimer_footer(model_name, timestamp)
+
+
+def render_cost_breakdown(result: EstimationResponse) -> None:
+    """
+    Render itemized cost breakdown with dual currency display.
+
+    Shows each line item with USD and local currency amounts.
+    Range items display a low-high range with disclaimer text.
+
+    Args:
+        result: Estimation response containing line_items and totals.
+    """
+    st.subheader("Cost Breakdown")
+
+    for item in result.line_items:
+        col_label, col_usd, col_local = st.columns([3, 1, 1])
+        with col_label:
+            st.markdown(f"**{item.label}**")
+            if item.is_range and item.range_disclaimer:
+                st.caption(item.range_disclaimer)
+        with col_usd:
+            if item.is_range and item.range_low_usd is not None and item.range_high_usd is not None:
+                st.markdown(f"USD {item.range_low_usd:,.0f} - {item.range_high_usd:,.0f}")
+            else:
+                st.markdown(f"USD {item.amount_usd:,.0f}")
+        with col_local:
+            if not item.is_range:
+                st.markdown(f"{item.local_currency} {item.amount_local:,.0f}")
+
+    # Total row
+    st.markdown("---")
+    col_label, col_usd, col_local = st.columns([3, 1, 1])
+    with col_label:
+        st.markdown("**Total Employer Cost**")
+    with col_usd:
+        st.markdown(f"**USD {result.total_employer_cost_usd:,.0f}**")
+    with col_local:
+        st.markdown(
+            f"**{result.local_currency} {result.total_employer_cost_local:,.0f}**"
+        )
+
+
+def render_cost_rating(result: EstimationResponse) -> None:
+    """
+    Render color-coded cost rating with regional benchmark context.
+
+    Shows overall rating as a colored badge with typical range,
+    plus per-item ratings for key cost components.
+
+    Args:
+        result: Estimation response containing overall_rating and item_ratings.
+    """
+    st.subheader("Cost Rating")
+
+    # Overall rating badge
+    rating = result.overall_rating
+    color = _RATING_COLORS.get(rating.level, "#aaa")
+    st.markdown(
+        f'<span style="display:inline-block; width:12px; height:12px; '
+        f'border-radius:50%; background:{color}; margin-right:6px;"></span>'
+        f'<strong style="font-size:1.1em;">{rating.level}</strong> '
+        f'<span style="color:#aaa;"> &mdash; Typical range for {rating.region_name}: '
+        f'${rating.typical_range_low_usd:,.0f}&ndash;${rating.typical_range_high_usd:,.0f}</span>',
+        unsafe_allow_html=True,
+    )
+
+    # Item ratings
+    for item_rating in result.item_ratings:
+        item_color = _RATING_COLORS.get(item_rating.level, "#aaa")
+        st.markdown(
+            f'<span style="display:inline-block; width:8px; height:8px; '
+            f'border-radius:50%; background:{item_color}; margin-right:4px;"></span>'
+            f'{item_rating.item_label}: <strong>{item_rating.level}</strong> '
+            f'<span style="color:#aaa;">{item_rating.context}</span>',
+            unsafe_allow_html=True,
+        )
+
+
+def render_insights(result: EstimationResponse) -> None:
+    """
+    Render AI insights as a narrative paragraph.
+
+    Displays the LLM-generated 2-3 sentence analysis in an info box.
+
+    Args:
+        result: Estimation response containing insights_paragraph.
+    """
+    st.subheader("AI Insights")
+    st.info(result.insights_paragraph)
+
+
+def render_pe_risk_section(result: EstimationResponse) -> None:
+    """
+    Render Permanent Establishment risk assessment section.
+
+    Includes risk level badge, PE threshold info, visual timeline bar,
+    threshold warning, treaty information, mitigation suggestions,
+    and optional economic employer note.
+
+    Args:
+        result: Estimation response containing pe_risk assessment.
+    """
+    pe = result.pe_risk
+    st.subheader("Permanent Establishment Risk")
+
+    # Risk level badge
+    color = _RATING_COLORS.get(pe.risk_level, "#aaa")
+    st.markdown(
+        f'<span style="display:inline-block; width:12px; height:12px; '
+        f'border-radius:50%; background:{color}; margin-right:6px;"></span>'
+        f'<strong style="font-size:1.1em;">{pe.risk_level}</strong> '
+        f'<span style="color:#aaa;"> &mdash; PE threshold: {pe.pe_threshold_days} days</span>',
+        unsafe_allow_html=True,
+    )
+
+    # Timeline bar
+    render_pe_timeline_bar(pe.assignment_duration_days, pe.pe_threshold_days)
+
+    # Threshold warning
+    if pe.exceeds_threshold:
+        months = pe.assignment_duration_days // 30
+        st.warning(
+            f"Your {months}-month assignment ({pe.assignment_duration_days} days) "
+            f"exceeds the {pe.pe_threshold_days}-day PE threshold."
+        )
+
+    # Treaty section
+    if pe.treaty_exists:
+        treaty_text = ""
+        if pe.treaty_name:
+            treaty_text += f"**Treaty:** {pe.treaty_name}\n\n"
+        if pe.treaty_implications:
+            treaty_text += pe.treaty_implications
+        if treaty_text:
+            st.info(treaty_text)
+    else:
+        home = st.session_state.get("home_country", "Home")
+        host = st.session_state.get("host_country", "Host")
+        warning_text = pe.no_treaty_warning or (
+            f"No tax treaty found between {home} and {host} -- default PE rules apply."
+        )
+        st.error(warning_text)
+
+    # Mitigation suggestions
+    if pe.mitigation_suggestions:
+        st.markdown("**Mitigation Suggestions:**")
+        for i, suggestion in enumerate(pe.mitigation_suggestions, 1):
+            st.markdown(f"{i}. {suggestion}")
+
+    # Economic employer note
+    if pe.economic_employer_note:
+        st.info(pe.economic_employer_note)
+
+
+def render_pe_timeline_bar(duration_days: int, threshold_days: int) -> None:
+    """
+    Render visual timeline bar showing assignment duration vs PE threshold.
+
+    Green bar if under threshold, red if over. White vertical line marks
+    the threshold position. Duration label inside bar, threshold label above.
+
+    Args:
+        duration_days: Assignment duration in days.
+        threshold_days: PE threshold in days for the country pair.
+    """
+    max_days = max(duration_days, threshold_days) * 1.2  # 20% padding
+    duration_pct = min((duration_days / max_days) * 100, 100)
+    threshold_pct = min((threshold_days / max_days) * 100, 100)
+    exceeds = duration_days > threshold_days
+    bar_color = "#e74c3c" if exceeds else "#2ecc71"
+
+    html = f"""
+    <div style="position:relative; height:40px; background:#2d2d2d; border-radius:8px; overflow:visible; margin:24px 0 10px 0;">
+        <!-- Duration bar -->
+        <div style="position:absolute; top:0; left:0; height:100%; width:{duration_pct}%;
+                     background:{bar_color}; border-radius:8px 0 0 8px; transition:width 0.3s;"></div>
+        <!-- Threshold marker -->
+        <div style="position:absolute; top:0; left:{threshold_pct}%; height:100%; width:2px;
+                     background:#ffffff; z-index:2;"></div>
+        <!-- Labels -->
+        <div style="position:absolute; top:50%; left:4px; transform:translateY(-50%);
+                     color:white; font-size:12px; z-index:3;">
+            {duration_days} days
+        </div>
+        <div style="position:absolute; top:-18px; left:{threshold_pct}%; transform:translateX(-50%);
+                     color:#aaa; font-size:11px; white-space:nowrap;">
+            PE threshold: {threshold_days} days
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_disclaimer_footer(model_name: str, timestamp: str) -> None:
+    """
+    Render footer disclaimer and expandable metadata section.
+
+    Args:
+        model_name: LLM model name used for the estimation.
+        timestamp: Generation timestamp string.
+    """
+    st.markdown("---")
+    st.caption(
+        "This tool provides estimates only and does not constitute tax, legal, "
+        "or financial advice. Users should consult qualified professionals."
+    )
+    with st.expander("Estimation Metadata"):
+        st.write(f"Estimated by **{model_name}** on {timestamp}")
+
+
+def run_estimation(
+    input_data: PayrollInput, api_key: str
+) -> Optional[EstimationResponse]:
+    """
+    Execute multi-country shadow payroll estimation.
+
+    Creates a CountryEstimator and calls estimate() with the current
+    host country FX rate from session state. Records model name and
+    timestamp in session state for metadata display.
+
+    Args:
+        input_data: Validated payroll input data.
+        api_key: OpenAI API key.
+
+    Returns:
+        Optional[EstimationResponse]: Estimation result or None if failed.
+    """
+    local_currency = COUNTRY_CURRENCIES.get(input_data.host_country, "USD")
+
+    # Get host FX rate from session state or fall back
+    if local_currency == "USD":
+        fx_rate_host = 1.0
+    else:
+        fx_rate_host = st.session_state.get("fx_rate_host", 1.0)
+
+    # Record metadata for display
+    model_name = config.LLM_MODEL
+    timestamp = datetime.now().strftime("%b %d, %Y at %H:%M")
+    st.session_state["estimation_model_name"] = model_name
+    st.session_state["estimation_timestamp"] = timestamp
+
+    try:
+        with st.spinner("Estimating shadow payroll costs with AI..."):
+            estimator = CountryEstimator(api_key)
+            result = estimator.estimate(input_data, fx_rate_host)
+        return result
+    except EstimationError as e:
+        st.error(f"Estimation error: {e}")
+        logger.error(f"Estimation error: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Unexpected estimation error: {e}")
+        logger.exception("Unexpected estimation error")
+        return None

@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 3 of 3 (Decision Experience)
-Plan: 2 of 3 in current phase (03-02 complete)
-Status: Executing Phase 3
-Last activity: 2026-02-19 -- Completed 03-02 (scenario comparison UI)
+Plan: 3 of 3 in current phase (03-03 complete)
+Status: All phases complete
+Last activity: 2026-02-19 -- Completed 03-03 (PDF & Excel export)
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 4.5 min
-- Total execution time: 0.43 hours
+- Total plans completed: 7
+- Average duration: 5.7 min
+- Total execution time: 0.73 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████████░] 89%
 |-------|-------|-------|----------|
 | 01-foundation-fixes | 2 | 11 min | 5.5 min |
 | 02-multi-country-estimation | 2 | 13 min | 6.5 min |
-| 03-decision-experience | 2 | 4 min | 2 min |
+| 03-decision-experience | 3 | 22 min | 7.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (3 min), 02-02 (10 min), 03-01 (2 min), 03-02 (2 min)
-- Trend: stable
+- Last 5 plans: 02-02 (10 min), 03-01 (2 min), 03-02 (2 min), 03-03 (18 min)
+- Trend: stable (03-03 longer due to PDF/Excel export complexity)
 
 *Updated after each plan completion*
 
@@ -65,6 +65,9 @@ Recent decisions affecting current work:
 - [03-01]: CSS custom properties in :root for consistent theming across all components
 - [03-02]: Bridge function converts model_dump() line_items list to dict for scenarios.py compatibility
 - [03-02]: Session state stores last_result + last_result_obj for persistence across Streamlit reruns
+- [03-03]: ReportLab built-in fonts (Helvetica, Courier) -- no custom TTF registration
+- [03-03]: Light backgrounds for PDF tables (print-friendly) vs dark theme for web UI
+- [03-03]: _ensure_dict_line_items helper in both PDF and Excel for format consistency
 
 ### Pending Todos
 
@@ -73,10 +76,10 @@ None yet.
 ### Blockers/Concerns
 
 - ~~Pydantic v1 syntax in models.py blocks all new model work~~ (RESOLVED in 01-01)
-- reportlab vs. weasyprint decision needed before Phase 3 PDF work
+- ~~reportlab vs. weasyprint decision needed before Phase 3 PDF work~~ (RESOLVED: chose reportlab in 03-03)
 
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 03-02-PLAN.md
+Stopped at: Completed 03-03-PLAN.md -- All phases complete
 Resume file: None

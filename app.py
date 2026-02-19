@@ -32,6 +32,7 @@ from shadow_payroll.ui import (
     render_saved_scenarios,
     render_comparison_table,
     render_scenario_summary,
+    render_export_buttons,
 )
 from shadow_payroll.scenarios import get_scenarios
 from shadow_payroll.config import config
@@ -132,6 +133,13 @@ def main():
         st.markdown("---")
         render_comparison_table(scenarios)
         render_scenario_summary(scenarios)
+
+    # Export buttons (appear when any scenarios exist)
+    if scenarios:
+        st.markdown("---")
+        model_name = st.session_state.get("last_model_name", config.LLM_MODEL)
+        timestamp = st.session_state.get("last_timestamp", "Unknown")
+        render_export_buttons(scenarios, model_name, timestamp)
 
 
 if __name__ == "__main__":

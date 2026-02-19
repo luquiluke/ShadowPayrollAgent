@@ -25,7 +25,8 @@ from .utils import get_cached_usd_ars_rate, get_fx_rates
 from .calculations import PayrollCalculator
 from .llm_handler import TaxLLMHandler, LLMError
 from .estimator import CountryEstimator, EstimationError
-from .excel_exporter import export_to_excel
+from .excel_exporter import export_to_excel, ExcelExporter
+from .pdf_exporter import PDFExporter
 from .scenarios import add_scenario, remove_scenario, get_scenarios, auto_name, normalize_line_items, MAX_SCENARIOS
 
 logger = logging.getLogger(__name__)
@@ -877,3 +878,83 @@ def render_scenario_summary(scenarios: list[dict]) -> None:
         f"**{cheapest[0]}** is the most cost-effective option. "
         f"{most_expensive[0]} has the highest total employer cost."
     )
+
+
+# --- Export download functions ---
+
+
+def generate_export_filename(scenarios: list[dict], extension: str) -> str:
+    """Generate a descriptive filename for export files.
+
+    Args:
+        scenarios: List of scenario dicts.
+        extension: File extension without dot (e.g., "pdf", "xlsx").
+
+    Returns:
+        Filename string like ``shadow_payroll_germany_vs_singapore_2026-02-19.pdf``.
+    """
+    from datetime import date
+
+    today = date.today().isoformat()
+    if len(scenarios) == 1:
+        country = scenarios[0].get("input_data", {}).get("host_country", "report").lower().replace(" ", "_")
+        return f"shadow_payroll_{country}_{today}.{extension}"
+    else:
+        countries = "_vs_".join(
+            s.get("input_data", {}).get("host_country", "unknown").lower().replace(" ", "_")
+            for s in scenarios
+        )
+        return f"shadow_payroll_{countries}_{today}.{extension}"
+
+
+def render_export_buttons(
+    scenarios: list[dict], model_name: str, timestamp: str
+) -> None:
+    """Render PDF and Excel download buttons side by side.
+
+    Args:
+        scenarios: List of scenario dicts from session state.
+        model_name: LLM model name for metadata.
+        timestamp: Generation timestamp for metadata.
+    """
+    if not scenarios:
+        return
+
+    col_excel, col_pdf = st.columns(2)
+
+    with col_excel:
+        try:
+            if len(scenarios) == 1:
+                excel_buf = ExcelExporter().create_comparison_report(
+                    scenarios, {"model_name": model_name, "timestamp": timestamp}
+                )
+            else:
+                excel_buf = ExcelExporter().create_comparison_report(
+                    scenarios, {"model_name": model_name, "timestamp": timestamp}
+                )
+            st.download_button(
+                label="Download Excel",
+                data=excel_buf,
+                file_name=generate_export_filename(scenarios, "xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="export_excel_btn",
+            )
+        except Exception as e:
+            st.error(f"Error generating Excel: {e}")
+            logger.error("Excel export error: %s", e)
+
+    with col_pdf:
+        try:
+            pdf_buf = PDFExporter().generate(
+                scenarios, {"model_name": model_name, "timestamp": timestamp}
+            )
+            st.download_button(
+                label="Download PDF",
+                data=pdf_buf,
+                file_name=generate_export_filename(scenarios, "pdf"),
+                mime="application/pdf",
+                key="export_pdf_btn",
+            )
+        except Exception as e:
+            st.error(f"Error generating PDF: {e}")
+            logger.error("PDF export error: %s", e)

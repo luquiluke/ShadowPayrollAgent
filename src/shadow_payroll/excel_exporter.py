@@ -2,18 +2,21 @@
 Excel export functionality for shadow payroll reports.
 
 This module handles generating formatted Excel reports with
-proper styling and currency formatting.
+proper styling and currency formatting. Supports both single-scenario
+legacy reports and multi-scenario comparison workbooks.
 """
 
 import logging
+from datetime import datetime
 from io import BytesIO
-from typing import Dict, Any
+from typing import Any, Dict
 
 import pandas as pd
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from .models import ShadowPayrollResult
+from .scenarios import normalize_line_items
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +166,256 @@ class ExcelExporter:
         logger.info("Detailed Excel report generated successfully")
 
         return output
+
+
+    # --- Multi-scenario comparison styles ---
+    BLUE_FILL = PatternFill(start_color="2d8cf0", end_color="2d8cf0", fill_type="solid")
+    WHITE_BOLD_FONT = Font(bold=True, color="FFFFFF", size=11)
+    COURIER_FONT = Font(name="Courier New", size=10)
+    COURIER_BOLD = Font(name="Courier New", size=10, bold=True)
+    GREEN_FILL = PatternFill(start_color="d4edda", end_color="d4edda", fill_type="solid")
+    RED_FILL = PatternFill(start_color="f8d7da", end_color="f8d7da", fill_type="solid")
+    TITLE_FONT = Font(bold=True, color="2d8cf0", size=14)
+    THIN_BORDER_TOP = Border(top=Side(style="thin"))
+
+    @staticmethod
+    def _ensure_dict_line_items(scenarios: list[dict]) -> list[dict]:
+        """Convert list-format line_items to dict format for normalize_line_items."""
+        prepared = []
+        for s in scenarios:
+            result = s.get("result", {})
+            li = result.get("line_items", {})
+            if isinstance(li, list):
+                s = dict(s)
+                s["result"] = dict(result)
+                s["result"]["line_items"] = {
+                    item["label"]: item.get("amount_usd", 0.0)
+                    for item in li
+                    if isinstance(item, dict)
+                }
+            prepared.append(s)
+        return prepared
+
+    def create_comparison_report(
+        self,
+        scenarios: list[dict],
+        metadata: dict[str, Any] | None = None,
+    ) -> BytesIO:
+        """Generate multi-sheet Excel workbook with comparison and per-scenario sheets.
+
+        Args:
+            scenarios: List of ScenarioData dicts from session state.
+            metadata: Optional dict with model_name and timestamp.
+
+        Returns:
+            BytesIO: Excel file ready for download.
+        """
+        metadata = metadata or {}
+        scenarios = self._ensure_dict_line_items(scenarios)
+        output = BytesIO()
+
+        from openpyxl import Workbook
+
+        wb = Workbook()
+
+        # --- Comparison sheet ---
+        ws_comp = wb.active
+        ws_comp.title = "Comparison"
+        self._build_comparison_sheet(ws_comp, scenarios, metadata)
+
+        # --- Per-scenario sheets ---
+        for scenario in scenarios:
+            name = scenario.get("name", "Scenario")[:31]  # Excel 31-char limit
+            ws = wb.create_sheet(title=name)
+            self._build_scenario_sheet(ws, scenario, metadata)
+
+        wb.save(output)
+        output.seek(0)
+        logger.info("Comparison Excel report generated (%d scenarios)", len(scenarios))
+        return output
+
+    def _build_comparison_sheet(
+        self, ws: Any, scenarios: list[dict], metadata: dict[str, Any]
+    ) -> None:
+        """Build the Comparison sheet with styled comparison table."""
+        num_scenarios = len(scenarios)
+
+        # Title row (merged)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=1 + num_scenarios)
+        title_cell = ws.cell(row=1, column=1, value="Shadow Payroll Comparison Report")
+        title_cell.font = self.TITLE_FONT
+        title_cell.alignment = Alignment(horizontal="center")
+
+        # Subtitle row
+        model = metadata.get("model_name", "")
+        ts = metadata.get("timestamp", datetime.now().strftime("%Y-%m-%d"))
+        subtitle = f"Generated: {ts}"
+        if model:
+            subtitle += f" | Model: {model}"
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=1 + num_scenarios)
+        sub_cell = ws.cell(row=2, column=1, value=subtitle)
+        sub_cell.font = Font(size=9, color="888888")
+        sub_cell.alignment = Alignment(horizontal="center")
+
+        # Blank row
+        start_row = 4
+
+        # Header row
+        labels, matrix = normalize_line_items(scenarios)
+        header = ["Cost Category"] + [s.get("name", "?") for s in scenarios]
+
+        for col_idx, val in enumerate(header, 1):
+            cell = ws.cell(row=start_row, column=col_idx, value=val)
+            cell.fill = self.BLUE_FILL
+            cell.font = self.WHITE_BOLD_FONT
+            cell.alignment = Alignment(horizontal="center" if col_idx > 1 else "left")
+
+        # Data rows
+        for label_idx, label in enumerate(labels):
+            row_num = start_row + 1 + label_idx
+            ws.cell(row=row_num, column=1, value=label)
+
+            row_values = [matrix[s_idx][label_idx] for s_idx in range(num_scenarios)]
+            min_val = min(row_values)
+            max_val = max(row_values)
+            all_equal = min_val == max_val
+
+            for s_idx, val in enumerate(row_values):
+                cell = ws.cell(row=row_num, column=2 + s_idx, value=val)
+                cell.number_format = '#,##0'
+                cell.font = self.COURIER_FONT
+                cell.alignment = Alignment(horizontal="right")
+                if not all_equal:
+                    if val == min_val:
+                        cell.fill = self.GREEN_FILL
+                    elif val == max_val:
+                        cell.fill = self.RED_FILL
+
+        # Total row
+        total_row = start_row + 1 + len(labels)
+        ws.cell(row=total_row, column=1, value="Total Employer Cost").font = Font(bold=True)
+
+        totals = [
+            s.get("result", {}).get("total_employer_cost_usd", 0) for s in scenarios
+        ]
+        min_total = min(totals)
+        max_total = max(totals)
+        totals_equal = min_total == max_total
+
+        for s_idx, val in enumerate(totals):
+            cell = ws.cell(row=total_row, column=2 + s_idx, value=val)
+            cell.number_format = '#,##0'
+            cell.font = self.COURIER_BOLD
+            cell.alignment = Alignment(horizontal="right")
+            cell.border = self.THIN_BORDER_TOP
+            if not totals_equal:
+                if val == min_total:
+                    cell.fill = self.GREEN_FILL
+                elif val == max_total:
+                    cell.fill = self.RED_FILL
+
+        # Also add border to label cell
+        ws.cell(row=total_row, column=1).border = self.THIN_BORDER_TOP
+
+        # Auto-fit column widths
+        ws.column_dimensions["A"].width = 25
+        for col_idx in range(2, 2 + num_scenarios):
+            ws.column_dimensions[get_column_letter(col_idx)].width = 20
+
+    def _build_scenario_sheet(
+        self, ws: Any, scenario: dict, metadata: dict[str, Any]
+    ) -> None:
+        """Build a per-scenario detail sheet."""
+        name = scenario.get("name", "Scenario")
+        inp = scenario.get("input_data", {})
+        result = scenario.get("result", {})
+
+        # Title
+        ws.cell(row=1, column=1, value=name).font = Font(bold=True, size=14, color="2d8cf0")
+
+        # Input summary section
+        row = 3
+        ws.cell(row=row, column=1, value="Assignment Details").font = Font(bold=True, size=11)
+        row += 1
+
+        input_fields = [
+            ("Annual Salary (USD)", f"${inp.get('salary_usd', 0):,.0f}"),
+            ("Duration (months)", inp.get("duration_months", "N/A")),
+            ("Home Country", inp.get("home_country", "N/A")),
+            ("Host Country", inp.get("host_country", "N/A")),
+            ("Housing Benefit (USD)", f"${inp.get('housing_usd', 0):,.0f}"),
+            ("Education Benefit (USD)", f"${inp.get('school_usd', 0):,.0f}"),
+            ("Spouse", "Yes" if inp.get("has_spouse") else "No"),
+            ("Children", inp.get("num_children", 0)),
+        ]
+
+        for label, value in input_fields:
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=2, value=value)
+            row += 1
+
+        row += 1
+
+        # Cost breakdown
+        ws.cell(row=row, column=1, value="Cost Breakdown").font = Font(bold=True, size=11)
+        row += 1
+
+        local_currency = result.get("local_currency", "Local")
+        cost_headers = ["Cost Item", "USD", local_currency]
+        for col_idx, val in enumerate(cost_headers, 1):
+            cell = ws.cell(row=row, column=col_idx, value=val)
+            cell.fill = self.BLUE_FILL
+            cell.font = self.WHITE_BOLD_FONT
+            cell.alignment = Alignment(horizontal="center" if col_idx > 1 else "left")
+        row += 1
+
+        line_items = result.get("line_items", {})
+        if isinstance(line_items, dict):
+            for label, amount_usd in line_items.items():
+                ws.cell(row=row, column=1, value=label)
+                cell_usd = ws.cell(row=row, column=2, value=float(amount_usd))
+                cell_usd.number_format = '#,##0'
+                cell_usd.font = self.COURIER_FONT
+                cell_usd.alignment = Alignment(horizontal="right")
+                ws.cell(row=row, column=3, value="N/A")
+                row += 1
+
+        # Total row
+        total_usd = result.get("total_employer_cost_usd", 0)
+        total_local = result.get("total_employer_cost_local", 0)
+        ws.cell(row=row, column=1, value="Total Employer Cost").font = Font(bold=True)
+        cell = ws.cell(row=row, column=2, value=total_usd)
+        cell.number_format = '#,##0'
+        cell.font = self.COURIER_BOLD
+        cell.border = self.THIN_BORDER_TOP
+        cell = ws.cell(row=row, column=3, value=total_local)
+        cell.number_format = '#,##0'
+        cell.font = self.COURIER_BOLD
+        cell.border = self.THIN_BORDER_TOP
+        ws.cell(row=row, column=1).border = self.THIN_BORDER_TOP
+        row += 2
+
+        # Cost rating
+        cost_rating = result.get("cost_rating") or result.get("overall_rating")
+        if isinstance(cost_rating, dict):
+            rating_level = cost_rating.get("overall_rating", cost_rating.get("level", "N/A"))
+            ws.cell(row=row, column=1, value="Cost Rating").font = Font(bold=True)
+            ws.cell(row=row, column=2, value=rating_level)
+            row += 2
+
+        # AI Insights
+        insights = result.get("insights_text") or result.get("insights_paragraph", "")
+        if insights:
+            ws.cell(row=row, column=1, value="AI Insights").font = Font(bold=True)
+            row += 1
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+            cell = ws.cell(row=row, column=1, value=str(insights))
+            cell.alignment = Alignment(wrap_text=True)
+
+        # Auto-fit columns
+        ws.column_dimensions["A"].width = 25
+        ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["C"].width = 18
 
 
 def export_to_excel(result: ShadowPayrollResult) -> BytesIO:

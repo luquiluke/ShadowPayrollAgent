@@ -554,7 +554,7 @@ def render_pe_risk_section(result: EstimationResponse) -> None:
         f'<span style="display:inline-block; width:12px; height:12px; '
         f'border-radius:50%; background:{color}; margin-right:6px;"></span>'
         f'<strong style="font-size:1.1em;">{pe.risk_level}</strong> '
-        f'<span style="color:#aaa;"> &mdash; PE threshold: {pe.pe_threshold_days} days</span>',
+        f'<span style="color:#aaa;"> \u2014 PE threshold: {pe.pe_threshold_days} days</span>',
         unsafe_allow_html=True,
     )
 

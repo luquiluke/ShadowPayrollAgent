@@ -1,180 +1,200 @@
+/* Shadow Payroll Calculator — Dark Fintech Theme
+   Single consolidated dark theme with CSS custom properties.
+   Blue color system, IBM Plex Serif headings, JetBrains Mono numbers.
+*/
 
-/* --- Single Dark Theme for All UI --- */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-.stSidebar, .stSidebarContent, .stSidebar * {
-  background: #23272e !important;
-  color: #f5f7fa !important;
-  border-right: 2px solid #3a4252;
-  box-shadow: 2px 0 16px 0 rgba(10,20,40,0.10);
+/* ── Custom Properties ────────────────────────────────────────────── */
+
+:root {
+  --bg-primary: #23272e;
+  --bg-secondary: #2d3642;
+  --bg-surface: rgba(30, 40, 60, 0.85);
+  --text-primary: #f5f7fa;
+  --text-secondary: #a0aec0;
+  --accent-blue: #2d8cf0;
+  --accent-blue-light: #5ba3f5;
+  --accent-blue-hover: #4a9df5;
+  --border-color: #3a4252;
+  --divider-color: #3a4252;
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+  --font-heading: 'IBM Plex Serif', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
+  --font-body: 'IBM Plex Serif', Georgia, serif;
+  --radius: 8px;
+  --shadow: 0 4px 16px rgba(10, 20, 40, 0.25);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+
+body, .stApp {
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%) !important;
+  font-family: var(--font-body) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── Typography ───────────────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading) !important;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-primary) !important;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+
+.stButton > button,
+.stDownloadButton > button {
+  background: var(--accent-blue);
+  color: var(--text-primary);
+  border-radius: var(--radius);
+  border: none;
+  box-shadow: var(--shadow);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover {
+  background: var(--accent-blue-hover);
+  box-shadow: 0 8px 24px rgba(45, 140, 240, 0.2);
+  transform: translateY(-1px);
+}
+
+/* ── Inputs ───────────────────────────────────────────────────────── */
+
+.stTextInput > div > input,
+.stNumberInput > div > input,
+.stSelectbox > div > div,
+.stTextArea > div > textarea {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border: 1.5px solid var(--border-color) !important;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 1.08rem;
+  padding: 0.5em 1em;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+.stTextInput > div > input:focus,
+.stNumberInput > div > input:focus,
+.stTextArea > div > textarea:focus {
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 2px 12px rgba(45, 140, 240, 0.1);
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────── */
+
+.stSidebar,
+[data-testid="stSidebar"] {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-right: 1px solid var(--border-color);
+}
+
+.stSidebar *,
+[data-testid="stSidebar"] * {
+  color: var(--text-primary) !important;
 }
 
 .stSidebar input,
 .stSidebar textarea,
 .stSidebar select,
 .stSidebar .stTextInput > div > input,
-.stSidebar .stNumberInput > div > input,
-.stSidebar .st-bb,
-.stSidebar .st-c3,
-.stSidebar .st-c4,
-.stSidebar .st-c5,
-.stSidebar .st-c6,
-.stSidebar .st-c7,
-.stSidebar .st-c8,
-.stSidebar .st-c9,
-.stSidebar .st-ca,
-.stSidebar .st-cb,
-.stSidebar .st-cc,
-.stSidebar .st-cd,
-.stSidebar .st-ce,
-.stSidebar .st-cf {
-  background: #23272e !important;
-  color: #f5f7fa !important;
-  border-color: #3a4252 !important;
+.stSidebar .stNumberInput > div > input {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
 }
 
 .stSidebar label,
 .stSidebar .stMarkdown,
 .stSidebar .stText,
 .stSidebar .stCaption {
-  color: #f5f7fa !important;
-}
-/*
-  Corporate Legal Theme for Shadow Payroll Calculator
-  - Distinctive, elegant, and professional
-  - No generic fonts or overused color schemes
-  - CSS variables for color and typography
-  - Subtle motion and layered backgrounds
-*/
-
-
-body, .stApp {
-  background: linear-gradient(135deg, #23272e 0%, #2d3642 100%) !important;
-  font-family: 'IBM Plex Serif', 'Merriweather', 'Georgia', serif !important;
-  color: #f5f7fa !important;
+  color: var(--text-primary) !important;
 }
 
-.stApp, .stMarkdown, .stText, .stCaption, .stInfo, .stWarning, .stSuccess, .stExpander, .stMetric, .stSidebar, .stSidebarContent {
-  color: #f5f7fa !important;
-}
-
-.stButton > button, .stDownloadButton > button {
-  background: #2d8cf0;
-  color: #fff;
-  border-radius: 14px;
-  border: none;
-  box-shadow: 0 4px 32px 0 rgba(10,20,40,0.25);
-  font-family: 'IBM Plex Serif', 'Merriweather', 'Georgia', serif;
-  font-weight: 600;
-  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
-  background: #e67e22;
-  box-shadow: 0 8px 32px 0 rgba(45,140,240,0.15);
-  transform: translateY(-2px) scale(1.03);
-}
-
-.stTextInput > div > input, .stNumberInput > div > input {
-  background: #23272e;
-  color: #f5f7fa;
-  border: 1.5px solid #3a4252;
-  border-radius: 14px;
-  font-family: 'JetBrains Mono', 'Fira Mono', 'Menlo', monospace;
-  font-size: 1.08rem;
-  padding: 0.5em 1em;
-  box-shadow: 0 4px 32px 0 rgba(10,20,40,0.25);
-  transition: border 0.2s, box-shadow 0.2s;
-}
-.stTextInput > div > input:focus, .stNumberInput > div > input:focus {
-  border: 1.5px solid #2d8cf0;
-  box-shadow: 0 2px 12px 0 rgba(45,140,240,0.10);
-}
+/* ── Metrics ──────────────────────────────────────────────────────── */
 
 .stMetric {
-  background: rgba(30,40,60,0.85);
-  color: #f5f7fa !important;
-  border: 1px solid #3a4252;
-}
-.stExpander {
-  background: #23272e !important;
-  color: #f5f7fa !important;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--corporate-font) !important;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  color: var(--corporate-dark);
-}
-
-.stButton > button, .stDownloadButton > button {
-  background: var(--corporate-accent);
-  color: #fff;
-  border-radius: var(--corporate-radius);
+  background: var(--bg-surface);
+  color: var(--text-primary) !important;
   border: none;
-  box-shadow: var(--corporate-shadow);
-  font-family: var(--corporate-font);
-  font-weight: 600;
-  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
-  background: var(--corporate-accent2);
-  box-shadow: 0 8px 32px 0 rgba(45,140,240,0.15);
-  transform: translateY(-2px) scale(1.03);
-}
-
-.stTextInput > div > input, .stNumberInput > div > input {
-  background: #fff;
-  border: 1.5px solid var(--corporate-border);
-  border-radius: var(--corporate-radius);
-  font-family: var(--corporate-mono);
-  font-size: 1.08rem;
-  padding: 0.5em 1em;
-  box-shadow: var(--corporate-shadow);
-  transition: border 0.2s, box-shadow 0.2s;
-}
-.stTextInput > div > input:focus, .stNumberInput > div > input:focus {
-  border: 1.5px solid var(--corporate-accent2);
-  box-shadow: 0 2px 12px 0 rgba(45,140,240,0.10);
-}
-
-.stSidebar, .stSidebarContent {
-  background: #f8fafc !important;
-  border-right: 2px solid var(--corporate-border);
-  box-shadow: 2px 0 16px 0 rgba(30,40,60,0.04);
-  color: var(--corporate-dark) !important;
-}
-
-.stMetric {
-  background: rgba(255,255,255,0.85);
-  border-radius: var(--corporate-radius);
-  box-shadow: var(--corporate-shadow);
+  border-radius: var(--radius);
   padding: 1em 1.5em;
   margin-bottom: 1em;
-  border: 1px solid var(--corporate-gray);
-  font-family: var(--corporate-font);
 }
 
-.stInfo, .stWarning, .stSuccess {
-  border-radius: var(--corporate-radius);
-  box-shadow: var(--corporate-shadow);
-  font-family: var(--corporate-font);
-}
+/* ── Expanders ────────────────────────────────────────────────────── */
 
 .stExpander {
-  background: #f5f7fa !important;
-  border-radius: var(--corporate-radius);
-  box-shadow: var(--corporate-shadow);
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius);
 }
 
-/* Subtle fade-in animation for page load */
-.stApp {
-  animation: fadeInStagger 1.2s cubic-bezier(.23,1.01,.32,1) both;
+/* ── Dividers ─────────────────────────────────────────────────────── */
+
+hr {
+  border: none;
+  border-top: 1px solid var(--divider-color);
+  margin: 1.5em 0;
 }
-@keyframes fadeInStagger {
-  0% { opacity: 0; transform: translateY(32px) scale(0.98); }
+
+/* ── Text Overrides ───────────────────────────────────────────────── */
+
+.stMarkdown,
+.stText,
+.stCaption,
+.stInfo,
+.stWarning,
+.stSuccess {
+  color: var(--text-primary) !important;
+}
+
+/* ── Alerts ───────────────────────────────────────────────────────── */
+
+.stInfo {
+  border-radius: var(--radius);
+}
+
+.stWarning {
+  border-radius: var(--radius);
+}
+
+.stSuccess {
+  border-radius: var(--radius);
+}
+
+/* ── Comparison Table Utility Classes ─────────────────────────────── */
+
+.cell-cheapest {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.cell-expensive {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+/* ── Animation ────────────────────────────────────────────────────── */
+
+.stApp {
+  animation: fadeIn 1.2s cubic-bezier(0.23, 1.01, 0.32, 1) both;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(24px); }
   100% { opacity: 1; transform: none; }
 }
 
+/* ── Hide Streamlit Footer ────────────────────────────────────────── */
 
-/* Hide Streamlit default footer */
 footer { display: none !important; }

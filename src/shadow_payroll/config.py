@@ -52,6 +52,19 @@ class AppConfig:
     EMPLOYER_CONTRIBUTION_RATE: float = 0.24  # ~24%
     PE_RISK_THRESHOLD_DAYS: int = 183
 
+    # Scenario Comparison
+    MAX_SCENARIOS: int = 3
+
+    # PDF Export Branding
+    PDF_COMPANY_NAME: str = "Shadow Payroll Advisory"
+    PDF_DISCLAIMER: str = (
+        "This document is for informational purposes only and does not constitute "
+        "tax or legal advice. All figures are AI-generated estimates based on publicly "
+        "available information. Consult qualified tax professionals before making "
+        "assignment decisions."
+    )
+    PDF_DATE_FORMAT: str = "%B %d, %Y"
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

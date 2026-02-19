@@ -28,7 +28,12 @@ from shadow_payroll.ui import (
     run_estimation,
     render_estimation_results,
     render_sidebar_info,
+    render_scenario_controls,
+    render_saved_scenarios,
+    render_comparison_table,
+    render_scenario_summary,
 )
+from shadow_payroll.scenarios import get_scenarios
 from shadow_payroll.config import config
 
 # Configure logging
@@ -59,11 +64,12 @@ def main():
         render_sidebar_info()
         return
 
-    # Initialize FX session state defaults
+    # Initialize session state defaults
     st.session_state.setdefault("fx_rate", config.FX_DEFAULT_RATE)
     st.session_state.setdefault("fx_date", "Not yet fetched")
     st.session_state.setdefault("fx_source", "Default")
     st.session_state.setdefault("fx_stale", True)
+    st.session_state.setdefault("scenarios", [])
 
     # Render sidebar
     render_sidebar_info()
@@ -82,7 +88,7 @@ def main():
     # Render FX sidebar AFTER host_country is known
     render_fx_sidebar()
 
-    # Calculate button
+    # Calculate button -- run estimation and store in session state
     if st.button("Calculate Shadow Payroll", type="primary", use_container_width=True):
         logger.info("Estimation triggered")
 
@@ -91,9 +97,41 @@ def main():
         if result:
             model_name = st.session_state.get("estimation_model_name", config.LLM_MODEL)
             timestamp = st.session_state.get("estimation_timestamp", "Unknown")
-            render_estimation_results(result, model_name, timestamp)
+            # Persist result across Streamlit reruns
+            st.session_state["last_result"] = result.model_dump()
+            st.session_state["last_input"] = input_data.model_dump()
+            st.session_state["last_model_name"] = model_name
+            st.session_state["last_timestamp"] = timestamp
+            st.session_state["last_result_obj"] = result
         else:
             logger.error("Estimation failed")
+
+    # Re-render last result if it exists (persists across reruns)
+    if "last_result" in st.session_state:
+        result_obj = st.session_state.get("last_result_obj")
+        model_name = st.session_state.get("last_model_name", config.LLM_MODEL)
+        timestamp = st.session_state.get("last_timestamp", "Unknown")
+
+        if result_obj is not None:
+            render_estimation_results(result_obj, model_name, timestamp)
+
+        # Scenario controls below results
+        render_scenario_controls(
+            st.session_state["last_result"],
+            st.session_state["last_input"],
+            model_name,
+            timestamp,
+        )
+
+    # Saved scenarios section (always shown if scenarios exist)
+    render_saved_scenarios()
+
+    # Comparison section (2+ scenarios)
+    scenarios = get_scenarios()
+    if len(scenarios) >= 2:
+        st.markdown("---")
+        render_comparison_table(scenarios)
+        render_scenario_summary(scenarios)
 
 
 if __name__ == "__main__":

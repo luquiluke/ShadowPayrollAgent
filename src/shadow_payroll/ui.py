@@ -26,6 +26,7 @@ from .calculations import PayrollCalculator
 from .llm_handler import TaxLLMHandler, LLMError
 from .estimator import CountryEstimator, EstimationError
 from .excel_exporter import export_to_excel
+from .scenarios import add_scenario, remove_scenario, get_scenarios, auto_name, normalize_line_items, MAX_SCENARIOS
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +43,9 @@ def configure_page() -> None:
 
 
 def inject_dark_theme():
-    """Injects the dark theme CSS and JS into the page."""
-    st.markdown("<style id='corporate-theme'></style>", unsafe_allow_html=True)
-    st.markdown("""
-        <script>
-        document.body.classList.remove('theme-light-override', 'theme-dark-override');
-        document.body.classList.add('theme-dark-override');
-        </script>
-    """, unsafe_allow_html=True)
+    """Applies dark theme. CSS custom properties handle theming via corporate_theme.css."""
+    # No JS needed -- CSS rewrite in Plan 01 handles theming entirely via CSS
+    pass
 
 
 def render_header() -> None:
@@ -697,3 +693,187 @@ def run_estimation(
         st.error(f"Unexpected estimation error: {e}")
         logger.exception("Unexpected estimation error")
         return None
+
+
+# --- Scenario comparison UI functions ---
+
+
+def _prepare_result_for_scenario(result_dict: dict) -> dict:
+    """Convert EstimationResponse.model_dump() line_items list to label->amount dict.
+
+    scenarios.py normalize_line_items expects result["line_items"] as
+    ``{label: amount_usd}`` but EstimationResponse.model_dump() produces
+    a list of CostLineItem dicts.  This bridges the gap.
+    """
+    line_items = result_dict.get("line_items", [])
+    if isinstance(line_items, list):
+        result_dict = dict(result_dict)  # shallow copy
+        result_dict["line_items"] = {
+            item["label"]: item.get("amount_usd", 0.0)
+            for item in line_items
+            if isinstance(item, dict)
+        }
+    return result_dict
+
+
+def render_scenario_controls(
+    result_dict: dict,
+    input_data_dict: dict,
+    model_name: str,
+    timestamp: str,
+) -> None:
+    """Render 'Save as Scenario' button and saved scenario list below estimation results.
+
+    Args:
+        result_dict: EstimationResponse as dict (from model_dump()).
+        input_data_dict: PayrollInput as dict (from model_dump()).
+        model_name: LLM model name used for estimation.
+        timestamp: Human-readable estimation timestamp.
+    """
+    scenarios = get_scenarios()
+
+    # Save button
+    if len(scenarios) < MAX_SCENARIOS:
+        if st.button("Save as Scenario", key="save_scenario_btn"):
+            name = auto_name(input_data_dict)
+            prepared = _prepare_result_for_scenario(result_dict)
+            success = add_scenario(name, input_data_dict, prepared, model_name, timestamp)
+            if success:
+                st.success(f"Scenario saved: {name}")
+                st.rerun()
+    else:
+        st.info(f"Maximum {MAX_SCENARIOS} scenarios reached. Remove one to add another.")
+
+
+def render_saved_scenarios() -> None:
+    """Show saved scenario chips/cards as a horizontal row with remove buttons."""
+    scenarios = get_scenarios()
+    if not scenarios:
+        return
+
+    st.markdown(f"**Scenarios ({len(scenarios)}/{MAX_SCENARIOS})**")
+
+    cols = st.columns(len(scenarios))
+    for idx, (col, scenario) in enumerate(zip(cols, scenarios)):
+        with col:
+            total = scenario.get("result", {}).get("total_employer_cost_usd", 0)
+            st.markdown(
+                f'<div style="background:var(--bg-surface, #2d3642); padding:12px; '
+                f'border-radius:8px; text-align:center;">'
+                f'<div style="font-weight:600; color:var(--text-primary, #f5f7fa);">'
+                f'{scenario["name"]}</div>'
+                f'<div style="font-family:\'JetBrains Mono\',monospace; color:var(--accent-blue, #4fc3f7); '
+                f'font-size:1.1em; margin-top:4px;">${total:,.0f}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Remove", key=f"remove_scenario_{idx}"):
+                remove_scenario(idx)
+                st.rerun()
+
+
+def render_comparison_table(scenarios: list[dict]) -> None:
+    """Render color-coded comparison table when 2+ scenarios exist.
+
+    Rows = cost categories, columns = scenarios.
+    Green background on cheapest value per row, red on most expensive.
+    No percentage or absolute delta numbers -- color only.
+
+    Args:
+        scenarios: List of scenario dicts from session state.
+    """
+    if len(scenarios) < 2:
+        return
+
+    labels, matrix = normalize_line_items(scenarios)
+
+    # Build header row
+    header_cells = '<th style="text-align:left; padding:10px 14px; border-bottom:2px solid #3a4252;">Cost Category</th>'
+    for scenario in scenarios:
+        header_cells += (
+            f'<th style="text-align:right; padding:10px 14px; border-bottom:2px solid #3a4252;">'
+            f'{scenario["name"]}</th>'
+        )
+
+    # Build data rows
+    body_rows = ""
+    num_scenarios = len(scenarios)
+    for label_idx, label in enumerate(labels):
+        row_values = [matrix[s_idx][label_idx] for s_idx in range(num_scenarios)]
+        min_val = min(row_values)
+        max_val = max(row_values)
+        all_equal = min_val == max_val
+
+        cells = f'<td style="padding:10px 14px; border-bottom:1px solid #3a4252;">{label}</td>'
+        for val in row_values:
+            bg = ""
+            if not all_equal:
+                if val == min_val:
+                    bg = "background:rgba(46, 204, 113, 0.15);"
+                elif val == max_val:
+                    bg = "background:rgba(231, 76, 60, 0.15);"
+            cells += (
+                f'<td style="text-align:right; padding:10px 14px; border-bottom:1px solid #3a4252; '
+                f"font-family:'JetBrains Mono',monospace; {bg}\">${val:,.0f}</td>"
+            )
+        body_rows += f"<tr>{cells}</tr>"
+
+    # Total row
+    totals = [
+        s.get("result", {}).get("total_employer_cost_usd", 0.0) for s in scenarios
+    ]
+    min_total = min(totals)
+    max_total = max(totals)
+    totals_equal = min_total == max_total
+
+    total_cells = (
+        '<td style="padding:10px 14px; font-weight:700; border-top:2px solid #3a4252;">'
+        "Total Employer Cost</td>"
+    )
+    for val in totals:
+        bg = ""
+        if not totals_equal:
+            if val == min_total:
+                bg = "background:rgba(46, 204, 113, 0.15);"
+            elif val == max_total:
+                bg = "background:rgba(231, 76, 60, 0.15);"
+        total_cells += (
+            f'<td style="text-align:right; padding:10px 14px; font-weight:700; '
+            f"font-family:'JetBrains Mono',monospace; border-top:2px solid #3a4252; {bg}\">"
+            f"${val:,.0f}</td>"
+        )
+    body_rows += f"<tr>{total_cells}</tr>"
+
+    html = f"""
+    <table style="width:100%; border-collapse:collapse; background:#2d3642; border-radius:8px;
+                  color:#f5f7fa; margin:16px 0;">
+        <thead><tr>{header_cells}</tr></thead>
+        <tbody>{body_rows}</tbody>
+    </table>
+    """
+    st.markdown("### Scenario Comparison")
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_scenario_summary(scenarios: list[dict]) -> None:
+    """Render plain-English summary identifying cheapest and most expensive scenarios.
+
+    Only shows when 2+ scenarios exist.
+
+    Args:
+        scenarios: List of scenario dicts from session state.
+    """
+    if len(scenarios) < 2:
+        return
+
+    totals = [
+        (s["name"], s.get("result", {}).get("total_employer_cost_usd", 0.0))
+        for s in scenarios
+    ]
+    cheapest = min(totals, key=lambda t: t[1])
+    most_expensive = max(totals, key=lambda t: t[1])
+
+    st.markdown(
+        f"**{cheapest[0]}** is the most cost-effective option. "
+        f"{most_expensive[0]} has the highest total employer cost."
+    )

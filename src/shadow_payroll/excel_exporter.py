@@ -15,6 +15,8 @@ import pandas as pd
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from pathlib import Path
+
 from .models import ShadowPayrollResult
 from .scenarios import normalize_line_items
 
@@ -168,6 +170,23 @@ class ExcelExporter:
         return output
 
 
+    # Logo path (resolved from package directory)
+    LOGO_PATH = Path(__file__).parent / "logo.png"
+
+    @classmethod
+    def _add_logo(cls, ws: Any, cell: str = "A1") -> None:
+        """Add company logo to a worksheet if the logo file exists."""
+        if cls.LOGO_PATH.is_file():
+            try:
+                from openpyxl.drawing.image import Image as XlImage
+
+                img = XlImage(str(cls.LOGO_PATH))
+                img.width = 100
+                img.height = 100
+                ws.add_image(img, cell)
+            except Exception:
+                pass  # Skip logo if image insertion fails
+
     # --- Multi-scenario comparison styles ---
     BLUE_FILL = PatternFill(start_color="2d8cf0", end_color="2d8cf0", fill_type="solid")
     WHITE_BOLD_FONT = Font(bold=True, color="FFFFFF", size=11)
@@ -180,7 +199,11 @@ class ExcelExporter:
 
     @staticmethod
     def _ensure_dict_line_items(scenarios: list[dict]) -> list[dict]:
-        """Convert list-format line_items to dict format for normalize_line_items."""
+        """Convert list-format line_items to dict format for normalize_line_items.
+
+        Also populates line_items_full with local currency amounts when
+        converting from list format.
+        """
         prepared = []
         for s in scenarios:
             result = s.get("result", {})
@@ -190,6 +213,15 @@ class ExcelExporter:
                 s["result"] = dict(result)
                 s["result"]["line_items"] = {
                     item["label"]: item.get("amount_usd", 0.0)
+                    for item in li
+                    if isinstance(item, dict)
+                }
+                s["result"]["line_items_full"] = {
+                    item["label"]: {
+                        "amount_usd": item.get("amount_usd", 0.0),
+                        "amount_local": item.get("amount_local", 0.0),
+                        "local_currency": item.get("local_currency", ""),
+                    }
                     for item in li
                     if isinstance(item, dict)
                 }
@@ -240,9 +272,13 @@ class ExcelExporter:
         """Build the Comparison sheet with styled comparison table."""
         num_scenarios = len(scenarios)
 
+        # Logo in top-right corner
+        last_col_letter = get_column_letter(1 + num_scenarios)
+        self._add_logo(ws, f"{last_col_letter}1")
+
         # Title row (merged)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=1 + num_scenarios)
-        title_cell = ws.cell(row=1, column=1, value="Shadow Payroll Comparison Report")
+        title_cell = ws.cell(row=1, column=1, value="Slater Consulting \u2014 Shadow Payroll Comparison")
         title_cell.font = self.TITLE_FONT
         title_cell.alignment = Alignment(horizontal="center")
 
@@ -330,7 +366,8 @@ class ExcelExporter:
         inp = scenario.get("input_data", {})
         result = scenario.get("result", {})
 
-        # Title
+        # Logo + Title
+        self._add_logo(ws, "C1")
         ws.cell(row=1, column=1, value=name).font = Font(bold=True, size=14, color="2d8cf0")
 
         # Input summary section
@@ -370,6 +407,7 @@ class ExcelExporter:
         row += 1
 
         line_items = result.get("line_items", {})
+        line_items_full = result.get("line_items_full", {})
         if isinstance(line_items, dict):
             for label, amount_usd in line_items.items():
                 ws.cell(row=row, column=1, value=label)
@@ -377,7 +415,13 @@ class ExcelExporter:
                 cell_usd.number_format = '#,##0'
                 cell_usd.font = self.COURIER_FONT
                 cell_usd.alignment = Alignment(horizontal="right")
-                ws.cell(row=row, column=3, value="N/A")
+                # Use full details if available for local currency amount
+                full = line_items_full.get(label, {})
+                local_val = full.get("amount_local", 0) if full else 0
+                cell_local = ws.cell(row=row, column=3, value=float(local_val) if local_val else 0)
+                cell_local.number_format = '#,##0'
+                cell_local.font = self.COURIER_FONT
+                cell_local.alignment = Alignment(horizontal="right")
                 row += 1
 
         # Total row

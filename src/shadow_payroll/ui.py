@@ -21,7 +21,7 @@ inject_corporate_theme()
 
 from .config import config, set_openai_api_key, COUNTRIES, CURRENCIES, COUNTRY_CURRENCIES, COUNTRY_REGIONS
 from .models import PayrollInput, ShadowPayrollResult, EstimationResponse, CostLineItem, PERiskAssessment
-from .utils import get_cached_usd_ars_rate, get_fx_rates
+from .utils import get_fx_rates
 from .calculations import PayrollCalculator
 from .llm_handler import TaxLLMHandler, LLMError
 from .estimator import CountryEstimator, EstimationError
@@ -102,65 +102,63 @@ def render_fx_sidebar() -> None:
     """
     Render a persistent FX rate sidebar widget.
 
-    Fetches the live exchange rate, displays it with metadata,
-    and provides a manual override option. Populates session state
-    with fx_rate, fx_date, fx_source, and fx_stale.
-
-    Also fetches and displays the host country currency rate when
-    a non-Argentina host country is selected.
+    Dynamically shows the exchange rate for the host country's currency
+    against USD. Provides a manual override option. Populates session state
+    with fx_rate, fx_rate_host, fx_date, fx_source, and fx_stale.
     """
+    host_country = st.session_state.get("host_country")
+    host_currency = COUNTRY_CURRENCIES.get(host_country, "USD") if host_country else "USD"
+
     with st.sidebar:
         st.subheader("Exchange Rate")
-        fx_data = get_cached_usd_ars_rate()
 
-        if fx_data:
+        if not host_country:
+            st.caption("Select a host country to see the exchange rate.")
+            return
+
+        if host_currency == "USD":
+            st.info(f"**Host country ({host_country}) uses USD**\n\nNo conversion needed.")
+            st.session_state["fx_rate"] = 1.0
+            st.session_state["fx_rate_host"] = 1.0
+            st.session_state["fx_stale"] = False
+            return
+
+        # Fetch rate for host country currency
+        all_rates = get_fx_rates("USD")
+        if all_rates and host_currency in all_rates.get("rates", {}):
+            rate = all_rates["rates"][host_currency]
             st.info(
-                f"**{fx_data['rate']:,.2f} ARS/USD**\n\n"
-                f"Updated: {fx_data['date']}\n\n"
-                f"Source: {fx_data['source']}"
+                f"**{rate:,.2f} {host_currency}/USD**\n\n"
+                f"Host: {host_country}\n\n"
+                f"Updated: {all_rates.get('date', 'N/A')}\n\n"
+                f"Source: {all_rates.get('source', 'N/A')}"
             )
-            st.session_state["fx_rate"] = fx_data["rate"]
-            st.session_state["fx_date"] = fx_data["date"]
-            st.session_state["fx_source"] = fx_data["source"]
+            st.session_state["fx_rate"] = rate
+            st.session_state["fx_rate_host"] = rate
+            st.session_state["fx_date"] = all_rates.get("date", "N/A")
+            st.session_state["fx_source"] = all_rates.get("source", "N/A")
             st.session_state["fx_stale"] = False
         else:
-            cached_rate = st.session_state.get("fx_rate", config.FX_DEFAULT_RATE)
+            cached_rate = st.session_state.get("fx_rate", 1.0)
             st.warning(
-                f"**Using cached rate: {cached_rate:,.2f} ARS/USD**\n\n"
-                f"API unavailable — data may be stale"
+                f"**Using cached rate: {cached_rate:,.2f} {host_currency}/USD**\n\n"
+                f"API unavailable \u2014 data may be stale"
             )
             st.session_state["fx_stale"] = True
 
         # Manual override
         override = st.number_input(
-            "Manual FX Override",
-            value=st.session_state.get("fx_rate", config.FX_DEFAULT_RATE),
-            min_value=1.0,
-            max_value=100000.0,
-            help="Override the automatic exchange rate",
+            f"Manual {host_currency}/USD Override",
+            value=st.session_state.get("fx_rate", 1.0),
+            min_value=0.001,
+            max_value=1000000.0,
+            help=f"Override the automatic {host_currency}/USD exchange rate",
         )
         if override != st.session_state.get("fx_rate"):
             st.session_state["fx_rate"] = override
+            st.session_state["fx_rate_host"] = override
             st.session_state["fx_source"] = "Manual"
             st.session_state["fx_date"] = "Manual entry"
-
-        # Host country currency rate
-        host_country = st.session_state.get("host_country")
-        if host_country and host_country != "Argentina":
-            host_currency = COUNTRY_CURRENCIES.get(host_country, "USD")
-            if host_currency != "USD":
-                all_rates = get_fx_rates("USD")
-                if all_rates and host_currency in all_rates.get("rates", {}):
-                    host_rate = all_rates["rates"][host_currency]
-                    st.session_state["fx_rate_host"] = host_rate
-                    st.info(
-                        f"**{host_rate:,.2f} {host_currency}/USD**\n\n"
-                        f"Host country: {host_country}"
-                    )
-                else:
-                    st.session_state["fx_rate_host"] = 1.0
-            else:
-                st.session_state["fx_rate_host"] = 1.0
 
 
 def render_input_form() -> Optional[PayrollInput]:
@@ -199,13 +197,15 @@ def render_input_form() -> Optional[PayrollInput]:
         home_country = st.selectbox(
             "Home Country",
             COUNTRIES,
-            index=COUNTRIES.index("Argentina"),
+            index=None,
+            placeholder="Select home country",
         )
 
         host_country = st.selectbox(
             "Host Country",
             COUNTRIES,
-            index=COUNTRIES.index("Argentina"),
+            index=None,
+            placeholder="Select host country",
         )
 
     with col2:
@@ -238,11 +238,10 @@ def render_input_form() -> Optional[PayrollInput]:
             step=1000.0,
         )
 
-        display_currency = st.selectbox(
-            "Display Currency",
-            CURRENCIES,
-            index=0,
-        )
+    # Display currency is determined by host country selection; fall back to USD
+    # if the host currency isn't in the allowed CURRENCIES list
+    host_cur = COUNTRY_CURRENCIES.get(host_country, "USD") if host_country else "USD"
+    display_currency = host_cur if host_cur in CURRENCIES else "USD"
 
     try:
         input_data = PayrollInput(
@@ -253,8 +252,8 @@ def render_input_form() -> Optional[PayrollInput]:
             housing_usd=housing_usd,
             school_usd=school_usd,
             fx_rate=fx_rate,
-            home_country=home_country,
-            host_country=host_country,
+            home_country=home_country or "Other",
+            host_country=host_country or "Other",
             display_currency=display_currency,
         )
         return input_data
@@ -705,12 +704,26 @@ def _prepare_result_for_scenario(result_dict: dict) -> dict:
     scenarios.py normalize_line_items expects result["line_items"] as
     ``{label: amount_usd}`` but EstimationResponse.model_dump() produces
     a list of CostLineItem dicts.  This bridges the gap.
+
+    Also preserves a ``line_items_full`` dict mapping label to
+    ``{amount_usd, amount_local, local_currency}`` so exporters can
+    render the local currency column instead of N/A.
     """
     line_items = result_dict.get("line_items", [])
     if isinstance(line_items, list):
         result_dict = dict(result_dict)  # shallow copy
         result_dict["line_items"] = {
             item["label"]: item.get("amount_usd", 0.0)
+            for item in line_items
+            if isinstance(item, dict)
+        }
+        # Preserve full details for export (local currency amounts)
+        result_dict["line_items_full"] = {
+            item["label"]: {
+                "amount_usd": item.get("amount_usd", 0.0),
+                "amount_local": item.get("amount_local", 0.0),
+                "local_currency": item.get("local_currency", ""),
+            }
             for item in line_items
             if isinstance(item, dict)
         }
@@ -735,7 +748,7 @@ def render_scenario_controls(
 
     # Save button
     if len(scenarios) < MAX_SCENARIOS:
-        if st.button("Save as Scenario", key="save_scenario_btn"):
+        if st.button("Save Comparison Scenario", key="save_scenario_btn"):
             name = auto_name(input_data_dict)
             prepared = _prepare_result_for_scenario(result_dict)
             success = add_scenario(name, input_data_dict, prepared, model_name, timestamp)

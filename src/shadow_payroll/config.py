@@ -56,7 +56,7 @@ class AppConfig:
     MAX_SCENARIOS: int = 3
 
     # PDF Export Branding
-    PDF_COMPANY_NAME: str = "Shadow Payroll Advisory"
+    PDF_COMPANY_NAME: str = "Slater Consulting"
     PDF_DISCLAIMER: str = (
         "This document is for informational purposes only and does not constitute "
         "tax or legal advice. All figures are AI-generated estimates based on publicly "
@@ -64,6 +64,7 @@ class AppConfig:
         "assignment decisions."
     )
     PDF_DATE_FORMAT: str = "%B %d, %Y"
+    PDF_LOGO_PATH: str = ""  # Path to logo image (PNG/JPG); leave empty for text fallback
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -146,20 +147,31 @@ COUNTRIES: list[str] = [
     "Other",
 ]
 
-# Supported display currencies
+# Supported display currencies (covers all COUNTRY_CURRENCIES values)
 CURRENCIES: list[str] = [
     "USD",
-    "EUR",
-    "GBP",
+    "AED",
     "ARS",
+    "AUD",
     "BRL",
     "CAD",
     "CHF",
+    "CLP",
     "CNY",
+    "COP",
+    "EUR",
+    "GBP",
+    "INR",
     "JPY",
+    "KRW",
     "MXN",
+    "NZD",
+    "PEN",
+    "PHP",
+    "PLN",
+    "SEK",
     "SGD",
-    "AUD",
+    "UYU",
 ]
 
 # Country to region mapping for benchmark comparison

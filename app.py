@@ -134,12 +134,29 @@ def main():
         render_comparison_table(scenarios)
         render_scenario_summary(scenarios)
 
-    # Export buttons (appear when any scenarios exist)
-    if scenarios:
+    # Export buttons (appear when scenarios exist OR a result is available)
+    model_name = st.session_state.get("last_model_name", config.LLM_MODEL)
+    timestamp = st.session_state.get("last_timestamp", "Unknown")
+    export_scenarios = scenarios if scenarios else []
+
+    # If no saved scenarios but a result exists, build a temporary scenario for export
+    if not export_scenarios and "last_result" in st.session_state:
+        from shadow_payroll.scenarios import auto_name
+        from shadow_payroll.ui import _prepare_result_for_scenario
+
+        tmp_result = _prepare_result_for_scenario(dict(st.session_state["last_result"]))
+        tmp_input = st.session_state.get("last_input", {})
+        export_scenarios = [{
+            "name": auto_name(tmp_input),
+            "input_data": tmp_input,
+            "result": tmp_result,
+            "model_name": model_name,
+            "timestamp": timestamp,
+        }]
+
+    if export_scenarios:
         st.markdown("---")
-        model_name = st.session_state.get("last_model_name", config.LLM_MODEL)
-        timestamp = st.session_state.get("last_timestamp", "Unknown")
-        render_export_buttons(scenarios, model_name, timestamp)
+        render_export_buttons(export_scenarios, model_name, timestamp)
 
 
 if __name__ == "__main__":

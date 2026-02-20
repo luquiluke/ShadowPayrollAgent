@@ -8,6 +8,7 @@ with charts, tables, branding, and disclaimers.
 import logging
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from reportlab.graphics.charts.barcharts import VerticalBarChart
@@ -50,6 +51,7 @@ def _ensure_dict_line_items(scenarios: list[dict]) -> list[dict]:
 
     normalize_line_items expects dict format, but scenarios may contain
     the raw list-of-CostLineItem-dicts format from model_dump().
+    Also populates line_items_full with local currency amounts.
     """
     prepared = []
     for s in scenarios:
@@ -63,6 +65,15 @@ def _ensure_dict_line_items(scenarios: list[dict]) -> list[dict]:
                 for item in li
                 if isinstance(item, dict)
             }
+            s["result"]["line_items_full"] = {
+                item["label"]: {
+                    "amount_usd": item.get("amount_usd", 0.0),
+                    "amount_local": item.get("amount_local", 0.0),
+                    "local_currency": item.get("local_currency", ""),
+                }
+                for item in li
+                if isinstance(item, dict)
+            }
         prepared.append(s)
     return prepared
 
@@ -70,8 +81,13 @@ def _ensure_dict_line_items(scenarios: list[dict]) -> list[dict]:
 class PDFExporter:
     """Generate professional PDF reports for shadow payroll cost analysis."""
 
-    def __init__(self, company_name: str | None = None):
+    def __init__(self, company_name: str | None = None, logo_path: str | None = None):
         self.company_name = company_name or config.PDF_COMPANY_NAME
+        default_logo = getattr(config, "PDF_LOGO_PATH", "") or ""
+        if not default_logo:
+            # Fall back to logo.png bundled alongside this module
+            default_logo = str(Path(__file__).parent / "logo.png")
+        self.logo_path = logo_path or default_logo
         self._setup_styles()
 
     def _setup_styles(self) -> None:
@@ -469,10 +485,15 @@ class PDFExporter:
 
         cost_rows = [["Cost Item", "USD", local_currency]]
 
+        line_items_full = result.get("line_items_full", {})
+
         if isinstance(line_items, dict):
             # Already in label->amount format (bridged)
             for label, amount_usd in line_items.items():
-                cost_rows.append([label, f"${float(amount_usd):,.0f}", "N/A"])
+                full = line_items_full.get(label, {})
+                local_val = full.get("amount_local", 0) if full else 0
+                local_str = f"{float(local_val):,.0f}" if local_val else "0"
+                cost_rows.append([label, f"${float(amount_usd):,.0f}", local_str])
         elif isinstance(line_items, list):
             # Original list of CostLineItem dicts
             for item in line_items:
@@ -671,15 +692,28 @@ class PDFExporter:
         canvas.setFillColor(TEXT_DARK)
         canvas.drawString(0.75 * inch, page_height - 0.6 * inch, self.company_name)
 
-        # Header right: logo placeholder
-        logo_x = page_width - 0.75 * inch - 0.8 * inch
-        logo_y = page_height - 0.7 * inch
-        canvas.setStrokeColor(HexColor("#cccccc"))
-        canvas.setFillColor(LIGHT_ROW)
-        canvas.rect(logo_x, logo_y, 0.8 * inch, 0.4 * inch, fill=1)
-        canvas.setFillColor(HexColor("#999999"))
-        canvas.setFont("Helvetica", 8)
-        canvas.drawCentredString(logo_x + 0.4 * inch, logo_y + 0.15 * inch, "LOGO")
+        # Header right: logo (image file or styled text fallback)
+        logo_w = 1.6 * inch
+        logo_h = 0.8 * inch
+        logo_x = page_width - 0.75 * inch - logo_w
+        logo_y = page_height - 0.9 * inch
+        logo_path = getattr(self, "logo_path", None)
+        if logo_path and Path(logo_path).is_file():
+            try:
+                canvas.drawImage(
+                    str(logo_path), logo_x, logo_y,
+                    width=logo_w, height=logo_h,
+                    preserveAspectRatio=True, mask="auto",
+                )
+            except Exception:
+                # Fall back to text if image fails
+                canvas.setFont("Helvetica-Bold", 9)
+                canvas.setFillColor(BLUE)
+                canvas.drawRightString(page_width - 0.75 * inch, page_height - 0.6 * inch, "Shadow Payroll")
+        else:
+            canvas.setFont("Helvetica-Bold", 9)
+            canvas.setFillColor(BLUE)
+            canvas.drawRightString(page_width - 0.75 * inch, page_height - 0.6 * inch, "Shadow Payroll")
 
         # Footer left: short disclaimer
         canvas.setFont("Helvetica", 7)
